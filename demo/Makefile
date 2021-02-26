@@ -20,7 +20,13 @@ include $(BASEDIR)/fiber/build.mk
 test_fiber:$(objs) test_fiber.o
 	$(CC) $(CFLAGS) -o test_fiber $(objs) test_fiber.o $(LDFLAGS)
 
+port_scan:$(objs) port_scan.o
+	$(CC) $(CFLAGS) -o port_scan $(objs) port_scan.o $(LDFLAGS)
+
 test_fiber.o:test_fiber.c
+	$(CC) $(INCDIR) $(CFLAGS) -c $< -o $@
+
+port_scan.o:port_scan.c
 	$(CC) $(INCDIR) $(CFLAGS) -c $< -o $@
 
 $(BASEDIR)/log/stats_api.h:$(BASEDIR)/log/stats.h $(BASEDIR)/log/allocator.h
