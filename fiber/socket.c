@@ -149,6 +149,7 @@ static void socket_timeout(struct fiber_timer *ftimer, void *data)
 
 #define FIBER_SOCKET_SUBCO_1(ftask, subco, arg, _sio)						\
 	do {											\
+		ret = ERR_OK;									\
 		/* re-entry point */								\
 		FIBER_CONCAT(FIBER_LABEL, __LINE__):						\
 		if (ret == ERR_OK) {								\
@@ -223,6 +224,7 @@ int socket_shutdown(struct fiber_task *ftask, void *arg)
 
 #define FIBER_SOCKET_SUBCO_TX(ftask, arg)							\
 	do {											\
+		ret = ERR_OK;									\
 		FIBER_CONCAT(FIBER_LABEL, __LINE__):						\
 		if (ret == ERR_OK) {								\
 			(ftask)->tier++;							\
@@ -287,6 +289,7 @@ int socket_send(struct fiber_task *ftask, void *arg)
 
 #define FIBER_SOCKET_SUBCO_RX(ftask, arg)							\
 	do {											\
+		ret = ERR_OK;									\
 		FIBER_CONCAT(FIBER_LABEL, __LINE__):						\
 		if (ret == ERR_OK) {								\
 			(ftask)->tier++;							\
