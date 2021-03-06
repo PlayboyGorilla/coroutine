@@ -163,14 +163,15 @@ extern int socket_recv(struct fiber_task *, void *arg);
 extern int socket_shutdown(struct fiber_task *, void *arg);
 
 /* facilitations to write fiber-based sockets */
-#define FIBER_SOCKET_ACCEPT(ftask, req)		FIBER_SUBCO(ftask, socket_accept, req)
-#define FIBER_SOCKET_CONNECT(ftask, req)	FIBER_SUBCO(ftask, socket_connect, req)
-#define FIBER_SOCKET_SEND(ftask, req)		FIBER_SUBCO(ftask, socket_send, req)
-#define FIBER_SOCKET_RECV(ftask, req)		FIBER_SUBCO(ftask, socket_recv, req)
-#define FIBER_SOCKET_SHUTDOWN(ftask, req)	FIBER_SUBCO(ftask, socket_shutdown, req)
+#define FIBER_SOCKET_ACCEPT(_ftask, _req)	FIBER_SUBCO(_ftask, socket_accept, _req)
+#define FIBER_SOCKET_CONNECT(_ftask, _req)	FIBER_SUBCO(_ftask, socket_connect, _req)
+#define FIBER_SOCKET_SEND(_ftask, _req)		FIBER_SUBCO(_ftask, socket_send, _req)
+#define FIBER_SOCKET_RECV(_ftask, _req)		FIBER_SUBCO(_ftask, socket_recv, _req)
+#define FIBER_SOCKET_SHUTDOWN(_ftask, _req)	FIBER_SUBCO(_ftask, socket_shutdown, _req)
 
 /*
- * Called by a sys-level socket coroutine to indicate yielding
+ * Called by a sys-level socket coroutine to yield
+ * Callers are expected to handle @ret by themselves
  */
 #define FIBER_SOCKET_YIELD(_ftask, _reason, _req, _sock)						\
 	do {												\
@@ -181,6 +182,25 @@ extern int socket_shutdown(struct fiber_task *, void *arg);
 			(_ftask)->yield_reason = (_reason);						\
 			(_ftask)->yield_sock = (_sock);							\
 			(_ftask)->yield_req = (_req);							\
+			return ret;									\
+		}											\
+	} while (0)
+
+/*
+ * Called by a sys-level socket coroutine to yield
+ * Callers return on error
+ */
+#define FIBER_SOCKET_YIELD_ERR_RETURN(_ftask, _reason, _req, _sock)					\
+	do {												\
+		ret = ERR_INPROGRESS;									\
+		FIBER_CONCAT(FIBER_LABEL, __LINE__):							\
+		if (ret == ERR_INPROGRESS) {								\
+			(_ftask)->labels[(_ftask)->tier] = &&FIBER_CONCAT(FIBER_LABEL, __LINE__);	\
+			(_ftask)->yield_reason = (_reason);						\
+			(_ftask)->yield_sock = (_sock);							\
+			(_ftask)->yield_req = (_req);							\
+			return ret;									\
+		} else if (ret != ERR_OK) {								\
 			return ret;									\
 		}											\
 	} while (0)
@@ -203,16 +223,13 @@ extern int socket_shutdown(struct fiber_task *, void *arg);
 
 /* request interfaces */
 extern void socket_init_connect_req(struct socket *,struct socket_req *,
-	const struct sockaddr_ex *, int is_ssl, unsigned long timeout, struct fiber_task *ftask);
+	const struct sockaddr_ex *, int is_ssl, unsigned long timeout);
 extern void socket_init_accept_req(struct socket *, struct socket_req *,
-	struct sockaddr_ex *, unsigned long timeout, struct fiber_task *ftask);
+	struct sockaddr_ex *, unsigned long timeout);
 extern void socket_init_send_req(struct socket *, struct socket_req *, const struct sockaddr_ex *dest_addr,
-	const uint8_t *buf, unsigned int len, uint16_t wait_type, unsigned long timeout,
-	struct fiber_task *ftask);
+	const uint8_t *buf, unsigned int len, uint16_t wait_type, unsigned long timeout);
 extern void socket_init_recv_req(struct socket *, struct socket_req *, struct sockaddr_ex *src_addr,
-	uint8_t *buf, unsigned int len, uint16_t wait_type, unsigned long timeout,
-	struct fiber_task *ftask);
-extern void socket_init_shutdown_req(struct socket *, struct socket_req *, int how, unsigned long timeout,
-	struct fiber_task *ftask);
+	uint8_t *buf, unsigned int len, uint16_t wait_type, unsigned long timeout);
+extern void socket_init_shutdown_req(struct socket *, struct socket_req *, int how, unsigned long timeout);
 
 #endif

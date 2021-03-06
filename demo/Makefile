@@ -35,11 +35,13 @@ $(BASEDIR)/log/stats_api.h:$(BASEDIR)/log/stats.h $(BASEDIR)/log/allocator.h
 $(objs): $(BUILDDIR)/%.o : $(BASEDIR)/%.c
 	$(CC) $(INCDIR) $(CFLAGS) -c $< -o $@
 
+all: test_fiber port_scan
+
 clean:
 ifeq ($(OS),linux)
-	-rm *.o test_fiber 2>/dev/null
+	-rm *.o test_fiber port_scan 2>/dev/null
 	cd $(BUILDDIR);find -name '*.o'|xargs rm
 else
-	-rm *.o test_fiber 2>/dev/null
+	-rm *.o test_fiber port_scan 2>/dev/null
 	cd $(BUILDDIR);find ./ -iname '*.o'|xargs rm
 endif

@@ -186,6 +186,7 @@ extern int fiber_msleep(struct fiber_task *, unsigned long ms);
 			(_ftask)->labels[(_ftask)->tier] = &&FIBER_CONCAT(FIBER_LABEL, __LINE__);	\
 			return ret;									\
 		}											\
+		(_ftask)->last_ret = ERR_OK;								\
 	} while (0)
 
 extern int fiber_submit_child(struct fiber_task *parent, struct fiber_task *child);

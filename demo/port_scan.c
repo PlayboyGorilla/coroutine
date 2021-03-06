@@ -50,7 +50,7 @@ static int port_scan_fiber(struct fiber_task *ftask, void *arg)
 
 		addrex_init(&ps->addr);
 		addrex_set_ip(&ps->addr, ps->ip, htons(ps->port_curr));
-		socket_init_connect_req(ps->s, &ps->req, &ps->addr, 0, PS_CONNECT_TIMEOUT, ftask);
+		socket_init_connect_req(ps->s, &ps->req, &ps->addr, 0, PS_CONNECT_TIMEOUT);
 
 		FIBER_SOCKET_CONNECT(ftask, &ps->req);
 		if (ps->req.ret == ERR_OK) {
