@@ -149,6 +149,7 @@ static inline void fiber_timer_init(struct fiber_timer *ftimer)
 {
 	ftimer->floop = NULL;
 }
+
 static inline int fiber_timer_is_sched(const struct fiber_timer *ftimer)
 {
 	return (ftimer->floop != NULL);
@@ -187,20 +188,6 @@ extern int fiber_msleep(struct fiber_task *, unsigned long ms);
 			return ret;									\
 		}											\
 		(_ftask)->last_ret = ERR_OK;								\
-	} while (0)
-
-extern int fiber_submit_child(struct fiber_task *parent, struct fiber_task *child);
-#define FIBER_SUBFIB(_ftask, _sub_ftask)								\
-	do {												\
-		ret = fiber_submit_child(_ftask, _sub_ftask);						\
-		FIBER_CONCAT(FIBER_LABEL, __LINE__):							\
-		if (ret == ERR_INPROGRESS) {								\
-			(_ftask)->labels[(_ftask)->tier] = &&FIBER_CONCAT(FIBER_LABEL, __LINE__);	\
-			(_ftask)->yield_reason = FIBER_YIELD_R_CHILD_FIBER;				\
-			(_ftask)->yield_sock = NULL;							\
-			(_ftask)->yield_req = NULL;							\
-			return ret;									\
-		}											\
 	} while (0)
 
 struct fiber_user_event {

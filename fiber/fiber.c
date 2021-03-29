@@ -871,36 +871,3 @@ static void *fiber_loop_main(void *arg)
 	assert(0);
 	return NULL;
 }
-
-/* in conjunction with FIBER_SUBFIB */
-int fiber_submit_child(struct fiber_task *parent, struct fiber_task *child)
-{
-	struct fiber_loop *floop = parent->floop;
-	int ret;
-
-	/*
-	 * TODO
-	 * common code sharing with fiber_event_submit()
-	 */
-	assert(fiber_loop_is_current(floop));
-
-	child->parent = parent;
-	child->floop = floop;
-	child->state = FIBER_TASK_S_INIT;
-	child->id = (fiber_task_id)sys_atomic_inc_return(&floop->task_id);
-	child->last_ret = ERR_OK;
-	child->tier = 0;
-	fiber_timer_init(&child->timer);
-
-	floop->task_nr++;
-	hash_insert(floop->task_table, child);
-
-	ret = child->task_cbk(child, NULL);
-	if (ret != ERR_INPROGRESS) {
-		fiber_task_done(child, ret);
-	} else {
-                fiber_task_suspend(child);
-	}
-
-	return ret;
-}
