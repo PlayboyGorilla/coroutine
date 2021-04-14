@@ -156,9 +156,6 @@ static void socket_timeout(struct fiber_timer *ftimer, void *data)
 		(_ftask)->tier++;									\
 		ret = (_subco)(_ftask, _arg);								\
 		(_ftask)->tier--;									\
-		if (ret == ERR_INPROGRESS && req->wait_type == SOCKIO_WAIT_NONE) {			\
-			ret = ERR_AGAIN;								\
-		}											\
 		if (ret == ERR_INPROGRESS) {								\
 			(_ftask)->labels[(_ftask)->tier] = &&FIBER_CONCAT(FIBER_LABEL, __LINE__);	\
 			(_sio)->req = req;								\
@@ -228,9 +225,6 @@ int socket_shutdown(struct fiber_task *ftask, void *arg)
 		(_ftask)->tier++;									\
 		ret = (sock->cls->send)(_ftask, _arg);							\
 		(_ftask)->tier--;									\
-		if (ret == ERR_INPROGRESS && req->wait_type == SOCKIO_WAIT_NONE) {			\
-			ret = ERR_AGAIN;								\
-		}											\
 		if (ret == ERR_INPROGRESS) {								\
 			(_ftask)->labels[(_ftask)->tier] = &&FIBER_CONCAT(FIBER_LABEL, __LINE__);	\
 			sock->tx_io.req = req;								\
@@ -292,9 +286,6 @@ int socket_send(struct fiber_task *ftask, void *arg)
 		(_ftask)->tier++;									\
 		ret = (sock->cls->recv)(_ftask, _arg);							\
 		(_ftask)->tier--;									\
-		if (ret == ERR_INPROGRESS && req->wait_type == SOCKIO_WAIT_NONE) {			\
-			ret = ERR_AGAIN;								\
-		}											\
 		if (ret == ERR_INPROGRESS) {								\
 			(_ftask)->labels[(_ftask)->tier] = &&FIBER_CONCAT(FIBER_LABEL, __LINE__);	\
 			sock->rx_io.req = req;								\

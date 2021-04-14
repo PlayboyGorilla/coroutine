@@ -128,7 +128,6 @@ struct socket_req {
 	uint16_t io_type;
 #define SOCKIO_WAIT_NORMAL      0
 #define SOCKIO_WAIT_ALL		1
-#define SOCKIO_WAIT_NONE	2
 	uint16_t wait_type;
 	union socket_req_param param;
 	int			ret;
