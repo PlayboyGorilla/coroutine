@@ -261,7 +261,7 @@ static int linux_tcp_accept(struct fiber_task *ftask, void *arg)
 		}
 		return ret;
 yield_out:
-		FIBER_SOCKET_YIELD(ftask, FIBER_YIELD_R_WAIT4_READ, req, req->s);
+		FIBER_SOCKET_YIELD_ERR_RETURN(ftask, FIBER_YIELD_R_WAIT4_READ, req, req->s);
 	} while(1);
 
 	/* Never here */
@@ -288,7 +288,7 @@ static int linux_tcp_send(struct fiber_task *ftask, void *arg)
 			return ret;
 		}
 	yield_out:
-		FIBER_SOCKET_YIELD(ftask, FIBER_YIELD_R_WAIT4_WRITE, req, req->s);
+		FIBER_SOCKET_YIELD_ERR_RETURN(ftask, FIBER_YIELD_R_WAIT4_WRITE, req, req->s);
 	} while (1);
 
 	/* Never here */
@@ -313,7 +313,7 @@ static int linux_tcp_recv(struct fiber_task *ftask, void *arg)
 			return ret;
 		}
 	yield_out:
-		FIBER_SOCKET_YIELD(ftask, FIBER_YIELD_R_WAIT4_READ, req, req->s);
+		FIBER_SOCKET_YIELD_ERR_RETURN(ftask, FIBER_YIELD_R_WAIT4_READ, req, req->s);
 	} while (1);
 
 	/* Never here */
@@ -402,7 +402,7 @@ static int linux_udp_send(struct fiber_task *ftask, void *arg)
 			return ret;
 		}
 yield_out:
-		FIBER_SOCKET_YIELD(ftask, FIBER_YIELD_R_WAIT4_WRITE, req, req->s);
+		FIBER_SOCKET_YIELD_ERR_RETURN(ftask, FIBER_YIELD_R_WAIT4_WRITE, req, req->s);
 	} while (1);
 
 	/* Never here */
@@ -430,7 +430,7 @@ static int linux_udp_recv(struct fiber_task *ftask, void *arg)
 			return ret;
 		}
 yield_out:
-		FIBER_SOCKET_YIELD(ftask, FIBER_YIELD_R_WAIT4_READ, req, req->s);
+		FIBER_SOCKET_YIELD_ERR_RETURN(ftask, FIBER_YIELD_R_WAIT4_READ, req, req->s);
 	} while (1);
 
 	/* Never here */
@@ -534,7 +534,7 @@ static int linux_icmp_send(struct fiber_task *ftask, void *arg)
 			return ret;
 		}
 yield_out:
-		FIBER_SOCKET_YIELD(ftask, FIBER_YIELD_R_WAIT4_WRITE, req, req->s);
+		FIBER_SOCKET_YIELD_ERR_RETURN(ftask, FIBER_YIELD_R_WAIT4_WRITE, req, req->s);
 	} while(1);
 
 	/* Never here */
@@ -562,7 +562,7 @@ static int linux_icmp_recv(struct fiber_task *ftask, void *arg)
 			return ret;
 		}
 yield_out:
-		FIBER_SOCKET_YIELD(ftask, FIBER_YIELD_R_WAIT4_READ, req, req->s);
+		FIBER_SOCKET_YIELD_ERR_RETURN(ftask, FIBER_YIELD_R_WAIT4_READ, req, req->s);
 	} while(1);
 
 	/* Never here */
