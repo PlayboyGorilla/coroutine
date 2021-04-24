@@ -5,9 +5,9 @@ CFLAGS:=-Wall -O2 -m64
 #CFLAGS:=-g -D__DEBUG__ -Wall -Werror
 INCDIR:=-I$(BASEDIR)/
 ifeq ($(OS),linux)
-LDFLAGS:=-lpthread -ldl -lrt
+LDFLAGS:=-lpthread -ldl -lrt -lpthread
 else
-LDFLAGS:=-lpthread -ldl
+LDFLAGS:=-lpthread -ldl -lpthread
 endif
 CC:=gcc
 

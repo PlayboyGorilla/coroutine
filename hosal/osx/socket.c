@@ -12,7 +12,7 @@
 #include <arpa/inet.h>
 #include <assert.h>
 
-#include "socket.h"
+#include "openssl/ssl.h"
 
 #include "fiber/socket.h"
 #include "fiber/fiber.h"
@@ -23,7 +23,13 @@
 #include "lib/misc.h"
 #include "lib/compiler.h"
 
+#include "socket.h"
 #include "socket_priv.h"
+
+#define LISTEN_Q_MAX 2048
+
+static SSL_CTX *ssl_client_ctx;
+static SSL_CTX *ssl_server_ctx;
 
 static int sys_error_map(int err)
 {
@@ -194,6 +200,7 @@ static int osx_tcp_get_connect_result(struct osx_socket *sock,
 	}
 	return ret;
 }
+
 /* fiber coroutine */
 static int osx_tcp_connect(struct fiber_task *ftask, void *arg)
 {
@@ -215,7 +222,7 @@ static int osx_tcp_connect(struct fiber_task *ftask, void *arg)
 	}
 
 yield_out:
-	FIBER_SOCKET_YIELD(ftask, FIBER_YIELD_R_WAIT4_WRITE, req, req->s);
+	FIBER_SOCKET_YIELD(ftask, FIBER_YIELD_R_WAIT4_WRITE, req, req->s, SOCK_IO_OP_TX);
 	/* check connect result */
 	ret = osx_tcp_get_connect_result(sock, req, ret);
 	FIBER_SOCKET_END(ftask, ret);
@@ -224,9 +231,12 @@ yield_out:
 
 static int osx_tcp_listen(struct socket *s)
 {
-	static const int LISTEN_Q_MAX = 2048;
 	struct osx_socket *sock = (struct osx_socket *)s;
 	int ret;
+
+	if (!ssl_server_ctx) {
+		return ERR_NOTPERMIT;
+	}
 
 	ret = listen(sock->fd, LISTEN_Q_MAX);
 	if (ret != 0)
@@ -235,12 +245,11 @@ static int osx_tcp_listen(struct socket *s)
 	return ERR_OK;
 }
 
-static inline int __osx_tcp_accept(struct osx_socket *sock)
+static inline int __osx_tcp_accept(struct osx_socket *sock, struct sockaddr_in *addr)
 {
-	struct sockaddr_in claddr;
 	socklen_t len = sizeof(struct sockaddr_in);
 
-	return accept(sock->fd, (struct sockaddr *)&claddr, &len);
+	return accept(sock->fd, (struct sockaddr *)addr, &len);
 }
 
 /* fiber coroutine */
@@ -249,7 +258,7 @@ static int osx_tcp_accept(struct fiber_task *ftask, void *arg)
 	FIBER_SOCKET_BEGIN(ftask, struct osx_socket, arg);
 
 	do {
-		ret = __osx_tcp_accept(sock);
+		ret = __osx_tcp_accept(sock, &req->param.accept.src_addr->ipaddr);
 		if (ret < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
 			goto yield_out;
 		} else if (ret < 0) {
@@ -265,11 +274,13 @@ static int osx_tcp_accept(struct fiber_task *ftask, void *arg)
 			close(ret);
 			ret = ERR_NOMEM;
 		} else {
+			req->param.accept.src_addr->flags = ADDREX_F_IP;
+			req->param.accept.s->cls = &sys_tcp_socket;
 			ret = ERR_OK;
 		}
 		return ret;
 yield_out:
-		FIBER_SOCKET_YIELD_ERR_RETURN(ftask, FIBER_YIELD_R_WAIT4_READ, req, req->s);
+		FIBER_SOCKET_YIELD_ERR_RETURN(ftask, FIBER_YIELD_R_WAIT4_READ, req, req->s, SOCK_IO_OP_RX);
 	} while(1);
 
 	/* Never here */
@@ -296,7 +307,7 @@ static int osx_tcp_send(struct fiber_task *ftask, void *arg)
 			return ret;
 		}
 	yield_out:
-		FIBER_SOCKET_YIELD_ERR_RETURN(ftask, FIBER_YIELD_R_WAIT4_WRITE, req, req->s);
+		FIBER_SOCKET_YIELD_ERR_RETURN(ftask, FIBER_YIELD_R_WAIT4_WRITE, req, req->s, SOCK_IO_OP_TX);
 	} while (1);
 
 	/* Never here */
@@ -321,7 +332,7 @@ static int osx_tcp_recv(struct fiber_task *ftask, void *arg)
 			return ret;
 		}
 	yield_out:
-		FIBER_SOCKET_YIELD_ERR_RETURN(ftask, FIBER_YIELD_R_WAIT4_READ, req, req->s);
+		FIBER_SOCKET_YIELD_ERR_RETURN(ftask, FIBER_YIELD_R_WAIT4_READ, req, req->s, SOCK_IO_OP_RX);
 	} while (1);
 
 	/* Never here */
@@ -409,7 +420,7 @@ static int osx_udp_recv(struct fiber_task *ftask, void *arg)
 			return ret;
 		}
 yield_out:
-		FIBER_SOCKET_YIELD_ERR_RETURN(ftask, FIBER_YIELD_R_WAIT4_READ, req, req->s);
+		FIBER_SOCKET_YIELD_ERR_RETURN(ftask, FIBER_YIELD_R_WAIT4_READ, req, req->s, SOCK_IO_OP_RX);
 	} while (1);
 
 	/* Never here */
@@ -438,7 +449,7 @@ static int osx_udp_send(struct fiber_task *ftask, void *arg)
 			return ret;
 		}
 yield_out:
-		FIBER_SOCKET_YIELD_ERR_RETURN(ftask, FIBER_YIELD_R_WAIT4_WRITE, req, req->s);
+		FIBER_SOCKET_YIELD_ERR_RETURN(ftask, FIBER_YIELD_R_WAIT4_WRITE, req, req->s, SOCK_IO_OP_TX);
 	} while (1);
 
 	/* Never here */
@@ -537,7 +548,7 @@ static int osx_icmp_send(struct fiber_task *ftask, void *arg)
 			return ret;
 		}
 yield_out:
-		FIBER_SOCKET_YIELD_ERR_RETURN(ftask, FIBER_YIELD_R_WAIT4_WRITE, req, req->s);
+		FIBER_SOCKET_YIELD_ERR_RETURN(ftask, FIBER_YIELD_R_WAIT4_WRITE, req, req->s, SOCK_IO_OP_TX);
 	} while(1);
 
 	/* Never here */
@@ -565,7 +576,7 @@ static int osx_icmp_recv(struct fiber_task *ftask, void *arg)
 			return ret;
 		}
 yield_out:
-		FIBER_SOCKET_YIELD_ERR_RETURN(ftask, FIBER_YIELD_R_WAIT4_READ, req, req->s);
+		FIBER_SOCKET_YIELD_ERR_RETURN(ftask, FIBER_YIELD_R_WAIT4_READ, req, req->s, SOCK_IO_OP_RX);
 	} while(1);
 
 	/* Never here */
@@ -590,19 +601,431 @@ struct socket_class sys_icmp_socket = {
 	.setsockopt	= common_socket_setopt,
 };
 
+/* SSL */
+static struct socket *osx_ssl_open(unsigned int priv_data, void *init_data)
+{
+	struct socket *s;
+	struct osx_socket *sock;
+	SSL *ssl;
+	int fd;
+
+	fd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
+	if (fd < 0)
+		return NULL;
+
+	ssl = SSL_new(ssl_client_ctx);
+	if (!ssl) {
+		close(fd);
+		return NULL;
+	}
+
+	s = socket_wrap(fd, SOCK_T_SSL_NONE, priv_data);
+	if (!s)
+		goto err_closesock_out;
+	sock = (struct osx_socket *)s;
+	sock->ssl = ssl;
+
+	return s;
+
+err_closesock_out:
+	SSL_free(ssl);
+	close(fd);
+	return NULL;
+}
+
+/* fiber coroutine */
+static int osx_ssl_shutdown(struct fiber_task *ftask, void *arg)
+{
+	FIBER_SOCKET_BEGIN(ftask, struct osx_socket, arg);
+
+	if (!(sock->state & SOCK_S_SSL_ATTACHED)) {
+		FIBER_SUBCO(ftask, osx_tcp_shutdown, arg);
+		return ret;
+	}
+
+	/* we don't do anything as SSL doesn't do RD shutdown */
+	if (req->param.shutdown.how == SOCK_SHUTDOWN_RD) {
+		return ERR_OK;
+	}
+
+	do {
+		ret = SSL_shutdown(sock->ssl);
+		if (ret == 0 || ret == 1) {
+			return ERR_OK;
+		} else {
+			unsigned int yield_reason;
+			int ssl_error;
+			ssl_error = SSL_get_error(sock->ssl, ret);
+			if (ssl_error == SSL_ERROR_WANT_WRITE) {
+				yield_reason = FIBER_YIELD_R_WAIT4_WRITE;
+			} else if (ssl_error == SSL_ERROR_WANT_READ) {
+				yield_reason = FIBER_YIELD_R_WAIT4_READ;
+			} else {
+				return ERR_IO;
+			}
+
+			sock->state |= SOCK_S_SSL_SCHED_SHUTDOWN;
+			FIBER_SOCKET_YIELD_ERR_RETURN(ftask, yield_reason, req, req->s, SOCK_IO_OP_SHUTDOWN);
+		}
+	} while (1);
+
+	FIBER_SOCKET_END(ftask, ERR_OK);
+}
+
+static int osx_ssl_bind(struct socket *s, const struct sockaddr_ex *addr)
+{
+	struct osx_socket *sock = (struct osx_socket *)s;
+
+	return common_socket_bind(sock, addr);
+}
+
+static int osx_ssl_close(struct socket *s)
+{
+	struct osx_socket *sock = (struct osx_socket *)s;
+	SSL *ssl = sock->ssl;
+
+	close(sock->fd);
+	socket_unwrap(s);
+	SSL_free(ssl);
+	return ERR_OK;
+}
+
+static int osx_ssl_listen(struct socket *s)
+{
+	struct osx_socket *sock = (struct osx_socket *)s;
+	int ret;
+
+	ret = listen(sock->fd, LISTEN_Q_MAX);
+	if (ret != 0)
+		return ERR_AGAIN;
+
+	return ERR_OK;
+}
+
+/* temporary SSL server socket */
+static struct socket *osx_ssl_temp_open(unsigned int priv_data, void *init_data)
+{
+	int fd;
+
+	fd = *((int *)init_data);
+	return socket_wrap(fd, SOCK_T_SSL_SERVER, priv_data);
+}
+
+static int osx_ssl_temp_close(struct socket *s)
+{
+	socket_unwrap(s);
+	return ERR_OK;
+}
+
+static struct socket_class ssl_temp_socket = {
+	.domain		= SOCK_DOMAIN_SYS_INET,
+	.type		= SOCK_TYPE_STREAM,
+	.protocol	= SOCK_PROTO_SSL,
+	.flags		= 0,
+	.name		= "osx_ssl_temp_socket",
+	.socket		= osx_ssl_temp_open,
+	.close		= osx_ssl_temp_close,
+	.accept		= osx_tcp_accept,
+};
+
+/* fiber coroutine */
+static inline struct socket *get_ssl_temp_socket(struct socket_req *orig_req)
+{
+	return (struct socket *)(orig_req->u.extra_pointer);
+}
+
+static inline struct socket_req *get_ssl_temp_req(struct socket_req *orig_req)
+{
+	return (struct socket_req *)socket_private(get_ssl_temp_socket(orig_req));
+}
+
+static int osx_ssl_accept(struct fiber_task *ftask, void *arg)
+{
+	FIBER_SOCKET_BEGIN(ftask, struct osx_socket, arg);
+
+	assert(req->u.extra_pointer == NULL);
+	req->u.extra_pointer = socket_create_from_class(&ssl_temp_socket, sizeof(struct socket_req), &sock->fd);
+	if (!req->u.extra_pointer) {
+		return ERR_NOMEM;
+	}
+
+	socket_init_accept_req(get_ssl_temp_socket(req), get_ssl_temp_req(req),
+		req->param.accept.src_addr, FIBER_WAIT4_INFINITE);
+	FIBER_SOCKET_ACCEPT(ftask, get_ssl_temp_req(req));
+
+	if (ret != ERR_OK) {
+		socket_close(get_ssl_temp_socket(req));
+		return ret;
+	}
+
+	/*
+	 * from this point, @sock points to the new socket created by osx_tcp_accept()
+	 */
+	sock = (struct osx_socket *)(get_ssl_temp_req(req)->param.accept.s);
+	sock->ssl = SSL_new(ssl_server_ctx);
+	if (!sock->ssl) {
+		osx_tcp_close(&sock->sock);
+		socket_close(get_ssl_temp_socket(req));
+		return ERR_NOMEM;
+	}
+	SSL_set_fd(sock->ssl, sock->fd);
+	sock->sock.cls = &sys_ssl_socket;
+	sock->state |= SOCK_S_SSL_ATTACHED;
+
+	/*
+	 * store the new socket in socket_req and free temporary request
+	 */
+	req->s = &sock->sock;
+	req->param.accept.s = &sock->sock;
+	socket_close(get_ssl_temp_socket(req));
+	req->u.extra_pointer = NULL;
+
+	do {
+		int ssl_error;
+		unsigned int yield_reason;
+
+		ret = SSL_accept(sock->ssl);
+		if (ret <= 0) {
+			ssl_error = SSL_get_error(sock->ssl, ret);
+			if (ssl_error == SSL_ERROR_WANT_READ) {
+				yield_reason = FIBER_YIELD_R_WAIT4_READ;
+			} else if (ssl_error == SSL_ERROR_WANT_WRITE) {
+				yield_reason = FIBER_YIELD_R_WAIT4_WRITE;
+			} else {
+				osx_ssl_close(&sock->sock);
+				return ERR_NOT_HANDLED;
+			}
+		} else {
+			break;
+		}
+
+		FIBER_SOCKET_YIELD(ftask, yield_reason, req, &sock->sock, SOCK_IO_OP_RX);
+		if (ret != ERR_OK) {
+			osx_ssl_close(&sock->sock);
+			return ret;
+		}
+	} while(1);
+
+	/* Never here */
+	FIBER_SOCKET_END(ftask, ERR_OK);
+}
+
+/* fiber coroutine */
+static int osx_ssl_connect(struct fiber_task *ftask, void *arg)
+{
+	FIBER_SOCKET_BEGIN(ftask, struct osx_socket, arg);	
+
+	/* sanity check */
+	if (!(req->param.conn.addr->flags & ADDREX_F_IP)) {
+		return ERR_INVAL;
+	}
+	if (sock->type != SOCK_T_SSL_NONE && sock->type != SOCK_T_SSL_CLIENT) {
+		return ERR_INVAL;
+	}
+
+	sock->type = SOCK_T_SSL_CLIENT;
+
+	if (!(sock->state & SOCK_S_TCP_CONNECTED)) {
+		ret = connect(sock->fd, (struct sockaddr *)&req->param.conn.addr->ipaddr,
+			sizeof(struct sockaddr_in));
+		if (likely(ret < 0 && errno == EINPROGRESS)) {
+			FIBER_SOCKET_YIELD(ftask, FIBER_YIELD_R_WAIT4_WRITE, req, req->s, SOCK_IO_OP_TX);
+			ret = osx_tcp_get_connect_result(sock, req, ret);
+			if (ret != ERR_OK) {
+				return ret;
+			} else {
+				sock->state |= SOCK_S_TCP_CONNECTED;
+			}
+		} else if (ret == 0) {
+			sock->state |= SOCK_S_TCP_CONNECTED;
+		} else {
+			sock->type = SOCK_T_SSL_NONE;
+			return sys_error_map(errno);
+		}
+	}
+
+	assert(sock->state & SOCK_S_TCP_CONNECTED);
+	if (!(req->param.conn.flags & SOCK_REQP_F_SSL)) {
+		return ERR_OK;
+	}
+
+	if (!(sock->state & SOCK_S_SSL_ATTACHED)) {
+		SSL_set_fd(sock->ssl, sock->fd);
+		sock->state |= SOCK_S_SSL_ATTACHED;
+	}
+
+	do {
+		ret = SSL_connect(sock->ssl);
+		if (ret == 1) {
+			sock->state |= SOCK_S_SSL_CONNECTED;
+			return ERR_OK;
+		} else {
+			int ssl_error;
+			unsigned int yield_reason;
+
+			ssl_error = SSL_get_error(sock->ssl, ret);
+			if (ssl_error == SSL_ERROR_WANT_READ) {
+				yield_reason = FIBER_YIELD_R_WAIT4_READ;
+			} else if (ssl_error == SSL_ERROR_WANT_WRITE) {
+				yield_reason = FIBER_YIELD_R_WAIT4_WRITE;
+			} else {
+				return ERR_NOT_HANDLED;
+			}
+
+			FIBER_SOCKET_YIELD_ERR_RETURN(ftask, yield_reason, req, req->s, SOCK_IO_OP_TX);
+		}
+	} while (1);
+
+	/* Never here */
+	FIBER_SOCKET_END(ftask, ERR_OK);
+}
+
+/* fiber coroutine */
+static int osx_ssl_send(struct fiber_task *ftask, void *arg)
+{
+	FIBER_SOCKET_BEGIN(ftask, struct osx_socket, arg);
+
+	if (!(sock->state & SOCK_S_SSL_ATTACHED)) {
+		FIBER_SUBCO(ftask, osx_tcp_send, arg);
+		return ret;
+	}
+
+	do {
+		ret = SSL_write(sock->ssl, req->param.send.buf + req->ret,
+			req->param.send.len - req->ret);
+		if (ret <= 0) {
+			unsigned int yield_reason;
+			int ssl_error;
+
+			ssl_error = SSL_get_error(sock->ssl, ret);
+			if (ssl_error == SSL_ERROR_WANT_READ) {
+				yield_reason = FIBER_YIELD_R_WAIT4_READ;
+			} else if (ssl_error == SSL_ERROR_WANT_WRITE) {
+				yield_reason = FIBER_YIELD_R_WAIT4_WRITE;
+			} else {
+				return ERR_IO;
+			}
+			FIBER_SOCKET_YIELD_ERR_RETURN(ftask, yield_reason, req, req->s, SOCK_IO_OP_TX);
+		} else {
+			return ret;
+		}
+	} while (1);
+
+	/* Never here */
+	FIBER_SOCKET_END(ftask, ERR_OK);
+}
+
+/* fiber coroutine */
+static int osx_ssl_recv(struct fiber_task *ftask, void *arg)
+{
+	FIBER_SOCKET_BEGIN(ftask, struct osx_socket, arg);
+
+	if (!(sock->state & SOCK_S_SSL_ATTACHED)) {
+		FIBER_SUBCO(ftask, osx_tcp_recv, arg);
+		return ret;
+	}
+
+	do {
+		ret = SSL_read(sock->ssl, req->param.recv.buf + req->ret,
+			req->param.recv.len - req->ret);
+		if (ret <= 0) {
+			unsigned int yield_reason;
+			int ssl_error;
+
+			ssl_error = SSL_get_error(sock->ssl, ret);
+			if (ssl_error == SSL_ERROR_WANT_READ) {
+				yield_reason = FIBER_YIELD_R_WAIT4_READ;
+			} else if (ssl_error == SSL_ERROR_WANT_WRITE) {
+				yield_reason = FIBER_YIELD_R_WAIT4_WRITE;
+			} else {
+				return ERR_IO;
+			}
+			FIBER_SOCKET_YIELD_ERR_RETURN(ftask, yield_reason, req, req->s, SOCK_IO_OP_RX);
+		} else {
+			return ret;
+		}
+	} while (1);
+
+	/* Never here */
+	FIBER_SOCKET_END(ftask, ERR_OK);
+}
+
+struct socket_class sys_ssl_socket = {
+	.domain		= SOCK_DOMAIN_SYS_INET,
+	.type		= SOCK_TYPE_STREAM,
+	.protocol	= SOCK_PROTO_SSL,
+	.flags		= 0,
+	.name		= "osx_ssl_socket",
+	.socket		= osx_ssl_open,
+	.close		= osx_ssl_close,
+	.bind		= osx_ssl_bind,
+	.listen		= osx_ssl_listen,
+	.accept		= osx_ssl_accept,
+	.connect	= osx_ssl_connect,
+	.shutdown	= osx_ssl_shutdown,
+	.send		= osx_ssl_send,
+	.recv		= osx_ssl_recv,
+	.setsockopt	= NULL,
+};
+
 /* subsystem init/exit */
+static SSL_CTX *subsys_new_server_ctx(void)
+{
+	const SSL_METHOD *method;
+	SSL_CTX *ctx;
+
+	method = SSLv23_server_method();
+
+	ctx = SSL_CTX_new(method);
+	if (!ctx) {
+		return NULL;
+	}
+
+	(void)SSL_CTX_set_ecdh_auto(ctx, 1);
+
+	/* Set the key and cert */
+	if (SSL_CTX_use_certificate_file(ctx, "cert.pem", SSL_FILETYPE_PEM) <= 0) {
+		SSL_CTX_free(ctx);
+		return NULL;
+	}
+
+	if (SSL_CTX_use_PrivateKey_file(ctx, "key.pem", SSL_FILETYPE_PEM) <= 0) {
+		SSL_CTX_free(ctx);
+		return NULL;
+	}
+
+	return ctx;
+}
+
 int subsys_sys_socket_init(void)
 {
+	ssl_client_ctx = SSL_CTX_new(TLS_client_method());
+	if (!ssl_client_ctx) {
+		return ERR_NOMEM;
+	}
+
+	ssl_server_ctx = subsys_new_server_ctx();
+	if (!ssl_server_ctx) {
+		fprintf(stderr, "WARNING: TLS server socket will not be allowed\n");
+	}
+
 	register_socket_class(&sys_tcp_socket);
 	register_socket_class(&sys_udp_socket);
 	register_socket_class(&sys_icmp_socket);
+	register_socket_class(&sys_ssl_socket);
 
 	return ERR_OK;
 }
 
 void subsys_sys_socket_exit(void)
 {
+	unregister_socket_class(&sys_ssl_socket);
 	unregister_socket_class(&sys_icmp_socket);
 	unregister_socket_class(&sys_udp_socket);
 	unregister_socket_class(&sys_tcp_socket);
+
+	if (ssl_server_ctx) {
+		SSL_CTX_free(ssl_server_ctx);
+	}
+	SSL_CTX_free(ssl_client_ctx);
 }

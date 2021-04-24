@@ -179,10 +179,8 @@ void fiber_init(struct fiber_task *ftask, fiber_callback task_cbk,
 	ftask->state = FIBER_TASK_S_INIT;
 	ftask->yield_reason = FIBER_YIELD_R_NONE;
 	ftask->yield_sock = NULL;
-	ftask->yield_req = NULL;
 	ftask->last_yield_reason = FIBER_YIELD_R_NONE;
 	ftask->last_yield_sock = NULL;
-	ftask->last_yield_req = NULL;
 	ftask->last_ret = ERR_OK;
 	ftask->local_var = local;
 	ftask->task_cbk = task_cbk;
@@ -448,15 +446,14 @@ static unsigned int fiber_sock_wait4_nr(struct socket *s,
 	unsigned int yield_reason)
 {
 	unsigned int nr = 0;
+	unsigned int i;
 
-	if (s->tx_io.req && s->tx_io.yield_reason == yield_reason) {
-		nr++;
-	}
-	if (s->rx_io.req && s->rx_io.yield_reason == yield_reason) {
-		nr++;
-	}
-	if (s->shutdown_io.req && s->shutdown_io.yield_reason == yield_reason) {
-		nr++;
+	for (i = 0; i < ARRAY_SIZE(s->io); i++) {
+		struct socket_io *sio = &s->io[i];
+
+		if (sio->in_progress && sio->yield_reason == yield_reason) {
+			nr++;
+		}
 	}
 	return nr;
 }
@@ -528,7 +525,7 @@ static void fiber_may_del_old_monitor(struct fiber_task *ftask)
 		sys_fiber_adjust_monitor(&ftask->floop->plat_data, ftask->last_yield_sock,
 			SYS_MON_F_READ_UNCHANGE, SYS_MON_F_WRITE_CLEAR);
 	} else {
-		assert(0);
+		assert(ftask->last_yield_reason == FIBER_YIELD_R_NONE);
 	}
 }
 
@@ -559,7 +556,6 @@ static void fiber_task_suspend(struct fiber_task *ftask)
 	/* Get ready for next suspend */
 	ftask->last_yield_reason = ftask->yield_reason;
 	ftask->last_yield_sock = ftask->yield_sock;
-	ftask->last_yield_req = ftask->yield_req;
 }
 
 static void fiber_task_resume(struct fiber_task *ftask, int last_ret)
@@ -627,18 +623,15 @@ static void fiber_event_read(struct fiber_loop *floop,
 {
 	struct socket *s = (struct socket *)(fevent->data);
 	unsigned int nr = 0;
+	unsigned int i;
 
-	if (s->tx_io.req && s->tx_io.yield_reason == FIBER_YIELD_R_WAIT4_READ) {
-		nr++;
-		fiber_schedule(s->tx_io.req->ftask, ERR_OK);
-	}
-	if (s->rx_io.req && s->rx_io.yield_reason == FIBER_YIELD_R_WAIT4_READ) {
-		nr++;
-		fiber_schedule(s->rx_io.req->ftask, ERR_OK);
-	}
-	if (s->shutdown_io.req && s->shutdown_io.yield_reason == FIBER_YIELD_R_WAIT4_READ) {
-		nr++;
-		fiber_schedule(s->shutdown_io.req->ftask, ERR_OK);
+	for (i = 0; i < ARRAY_SIZE(s->io); i++) {
+		struct socket_io *sio = &s->io[i];
+
+		if (sio->in_progress && sio->yield_reason == FIBER_YIELD_R_WAIT4_READ) {
+			nr++;
+			fiber_schedule(sio->last_ftask, ERR_OK);
+		}
 	}
 
 	/* fiber tasks waiting on READ event must be present */
@@ -650,18 +643,15 @@ static void fiber_event_write(struct fiber_loop *floop,
 {
 	struct socket *s = (struct socket *)(fevent->data);
 	unsigned int nr = 0;
+	unsigned int i;
 
-	if (s->tx_io.req && s->tx_io.yield_reason == FIBER_YIELD_R_WAIT4_WRITE) {
-		nr++;
-		fiber_schedule(s->tx_io.req->ftask, ERR_OK);
-	}
-	if (s->rx_io.req && s->rx_io.yield_reason == FIBER_YIELD_R_WAIT4_WRITE) {
-		nr++;
-		fiber_schedule(s->rx_io.req->ftask, ERR_OK);
-	}
-	if (s->shutdown_io.req && s->shutdown_io.yield_reason == FIBER_YIELD_R_WAIT4_WRITE) {
-		nr++;
-		fiber_schedule(s->shutdown_io.req->ftask, ERR_OK);
+	for (i = 0; i < ARRAY_SIZE(s->io); i++) {
+		struct socket_io *sio = &s->io[i];
+
+		if (sio->in_progress && sio->yield_reason == FIBER_YIELD_R_WAIT4_WRITE) {
+			nr++;
+			fiber_schedule(sio->last_ftask, ERR_OK);
+		}
 	}
 
 	/* fiber tasks waiting on WRITE event must be present */
@@ -672,15 +662,14 @@ static void fiber_event_error(struct fiber_loop *floop,
 	const struct fiber_event *fevent)
 {
 	struct socket *s = (struct socket *)(fevent->data);
+	unsigned int i;
 
-	if (s->tx_io.req && s->tx_io.yield_reason != FIBER_YIELD_R_NONE) {
-		fiber_schedule(s->tx_io.req->ftask, ERR_IO);
-	}
-	if (s->rx_io.req && s->rx_io.yield_reason != FIBER_YIELD_R_NONE) {
-		fiber_schedule(s->rx_io.req->ftask, ERR_IO);
-	}
-	if (s->shutdown_io.req && s->shutdown_io.yield_reason != FIBER_YIELD_R_NONE) {
-		fiber_schedule(s->shutdown_io.req->ftask, ERR_IO);
+	for (i = 0; i < ARRAY_SIZE(s->io); i++) {
+		struct socket_io *sio = &s->io[i];
+
+		if (sio->in_progress && sio->yield_reason != FIBER_YIELD_R_NONE) {
+			fiber_schedule(sio->last_ftask, ERR_OK);
+		}
 	}
 }
 

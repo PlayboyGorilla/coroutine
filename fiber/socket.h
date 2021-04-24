@@ -10,11 +10,11 @@
 #include "lib/misc.h"
 
 struct socket_req;
+/*
+ * describe on-going I/O operation
+ */
 struct socket_io {
-	/*
-	 * The current on-going I/O operation
-	 */
-	struct socket_req	*req;
+	int			in_progress;
 	struct fiber_task	*last_ftask;	/* last fiber task that issued this I/O */
 	unsigned int		yield_reason;
 	struct fiber_timer	timer;
@@ -23,9 +23,11 @@ struct socket_io {
 struct socket_class;
 struct socket {
 	struct socket_class	*cls;
-	struct socket_io	tx_io;
-	struct socket_io	rx_io;
-	struct socket_io	shutdown_io;
+#define SOCK_IO_OP_TX		0
+#define SOCK_IO_OP_RX		1
+#define SOCK_IO_OP_SHUTDOWN	2
+#define SOCK_IO_OP_MAX		3
+	struct socket_io	io[SOCK_IO_OP_MAX];
 	void			*priv_data;
 	unsigned int		priv_len;
 };
@@ -134,7 +136,10 @@ struct socket_req {
 	unsigned long		timeout;
 	struct list_node	node;		/* internal -- link this request to 'struct sock' object internal queue */
 	/* used by porting layer */
-	uint64_t		extra[2];
+	union {
+		uint64_t		extra_data;
+		void			*extra_pointer;
+	}u;
 };
 #define SOCK_REQ_PRIV_MAX	(sizeof(unsigned long) * 16)
 #define socket_req_priv(type, req)	((type *)((req)->extra))
@@ -148,6 +153,7 @@ extern int socket_listen(struct socket *);
 
 extern int socket_setopt(struct socket *, int level, int optname, const void *optval, socklen_t optlen);
 extern void socket_cancel(struct socket_req *);
+extern void socket_timeout(struct fiber_timer *ftimer, void *data);
 
 static inline void *socket_private(struct socket *s)
 {
@@ -171,7 +177,7 @@ extern int socket_shutdown(struct fiber_task *, void *arg);
  * Called by a sys-level socket coroutine to yield
  * Callers are expected to handle @ret by themselves
  */
-#define FIBER_SOCKET_YIELD(_ftask, _reason, _req, _sock)						\
+#define FIBER_SOCKET_YIELD(_ftask, _reason, _req, _sock, _io_op)					\
 	do {												\
 		ret = ERR_INPROGRESS;									\
 		FIBER_CONCAT(FIBER_LABEL, __LINE__):							\
@@ -179,8 +185,21 @@ extern int socket_shutdown(struct fiber_task *, void *arg);
 			(_ftask)->labels[(_ftask)->tier] = &&FIBER_CONCAT(FIBER_LABEL, __LINE__);	\
 			(_ftask)->yield_reason = (_reason);						\
 			(_ftask)->yield_sock = (_sock);							\
-			(_ftask)->yield_req = (_req);							\
+			(_sock)->io[_io_op].in_progress = 1;						\
+			(_sock)->io[_io_op].last_ftask = (_ftask);					\
+			(_sock)->io[_io_op].yield_reason = (_reason);					\
+			(_req)->ftask = (_ftask);							\
+			if ((_req)->timeout <= FIBER_MSLEEP_MAX) {					\
+				fiber_timer_mod(&(_sock)->io[_io_op].timer, (_req)->timeout,		\
+					socket_timeout, req);						\
+			}										\
 			return ret;									\
+		} else {										\
+			(_sock)->io[_io_op].in_progress = 0;						\
+                        (_sock)->io[_io_op].yield_reason = FIBER_YIELD_R_NONE;				\
+                        fiber_timer_del(&(_sock)->io[_io_op].timer);					\
+                        (_req)->ftask = NULL;								\
+                        (_ftask)->last_ret = ERR_OK;							\
 		}											\
 	} while (0)
 
@@ -188,7 +207,7 @@ extern int socket_shutdown(struct fiber_task *, void *arg);
  * Called by a sys-level socket coroutine to yield
  * Callers return on error
  */
-#define FIBER_SOCKET_YIELD_ERR_RETURN(_ftask, _reason, _req, _sock)					\
+#define FIBER_SOCKET_YIELD_ERR_RETURN(_ftask, _reason, _req, _sock, _io_op)				\
 	do {												\
 		ret = ERR_INPROGRESS;									\
 		FIBER_CONCAT(FIBER_LABEL, __LINE__):							\
@@ -196,10 +215,24 @@ extern int socket_shutdown(struct fiber_task *, void *arg);
 			(_ftask)->labels[(_ftask)->tier] = &&FIBER_CONCAT(FIBER_LABEL, __LINE__);	\
 			(_ftask)->yield_reason = (_reason);						\
 			(_ftask)->yield_sock = (_sock);							\
-			(_ftask)->yield_req = (_req);							\
+			(_sock)->io[_io_op].in_progress = 1;						\
+			(_sock)->io[_io_op].last_ftask = (_ftask);					\
+			(_sock)->io[_io_op].yield_reason = (_reason);					\
+			(_req)->ftask = (_ftask);							\
+			if ((_req)->timeout <= FIBER_MSLEEP_MAX) {					\
+				fiber_timer_mod(&(_sock)->io[_io_op].timer, (_req)->timeout,		\
+					socket_timeout, req);						\
+			}										\
 			return ret;									\
-		} else if (ret != ERR_OK) {								\
-			return ret;									\
+		} else {										\
+			(_sock)->io[_io_op].in_progress = 0;						\
+                        (_sock)->io[_io_op].yield_reason = FIBER_YIELD_R_NONE;				\
+                        fiber_timer_del(&(_sock)->io[_io_op].timer);					\
+                        (_req)->ftask = NULL;								\
+                        (_ftask)->last_ret = ERR_OK;							\
+			if (ret != ERR_OK) {								\
+				return ret;								\
+			}										\
 		}											\
 	} while (0)
 

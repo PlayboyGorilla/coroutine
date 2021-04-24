@@ -34,7 +34,7 @@ void unregister_socket_class(struct socket_class *sockcls)
 /* unified interfaces */
 static inline void socket_init_io(struct socket_io *sio)
 {
-	sio->req = NULL;
+	sio->in_progress = 0;
 	sio->last_ftask = NULL;
 	sio->yield_reason = FIBER_YIELD_R_NONE;
 	fiber_timer_init(&sio->timer);
@@ -47,9 +47,9 @@ struct socket *socket_create_from_class(struct socket_class *sockcls, unsigned i
 	s = sockcls->socket(priv_data, init_data);
 	if (s) {
 		s->cls = sockcls;
-		socket_init_io(&s->tx_io);
-		socket_init_io(&s->rx_io);
-		socket_init_io(&s->shutdown_io);
+		socket_init_io(&s->io[SOCK_IO_OP_TX]);
+		socket_init_io(&s->io[SOCK_IO_OP_RX]);
+		socket_init_io(&s->io[SOCK_IO_OP_SHUTDOWN]);
 	}
 
 	return s;
@@ -76,7 +76,7 @@ static void socket_close_check_sio(struct socket *s, struct socket_io *sio)
 {
 	struct fiber_task *ftask = sio->last_ftask;
 
-	assert(sio->req == NULL);
+	assert(sio->in_progress == 0);
 
 	if (!ftask) {
 		return;
@@ -86,7 +86,6 @@ static void socket_close_check_sio(struct socket *s, struct socket_io *sio)
 	if (ftask->last_yield_sock == s) {
 		ftask->last_yield_reason = FIBER_YIELD_R_NONE;
 		ftask->last_yield_sock = NULL;
-		ftask->last_yield_req = NULL;
 	}
 }
 
@@ -95,9 +94,9 @@ static void socket_close_check_sio(struct socket *s, struct socket_io *sio)
  */
 int socket_close(struct socket *sock)
 {
-	socket_close_check_sio(sock, &sock->tx_io);
-	socket_close_check_sio(sock, &sock->rx_io);
-	socket_close_check_sio(sock, &sock->shutdown_io);
+	socket_close_check_sio(sock, &sock->io[SOCK_IO_OP_TX]);
+	socket_close_check_sio(sock, &sock->io[SOCK_IO_OP_RX]);
+	socket_close_check_sio(sock, &sock->io[SOCK_IO_OP_SHUTDOWN]);
 
 	return sock->cls->close(sock);
 }
@@ -135,7 +134,7 @@ void socket_cancel(struct socket_req *req)
 	fiber_schedule(req->ftask, ERR_ABORTED);
 }
 
-static void socket_timeout(struct fiber_timer *ftimer, void *data)
+void socket_timeout(struct fiber_timer *ftimer, void *data)
 {
 	struct socket_req *req = data;
 
@@ -149,7 +148,7 @@ static void socket_timeout(struct fiber_timer *ftimer, void *data)
 	} while(0)
 
 
-#define FIBER_SOCKET_SUBCO_1(_ftask, _subco, _arg, _sio)						\
+#define FIBER_SOCKET_SUBCO_1(_ftask, _subco, _arg)							\
 	do {												\
 		/* re-entry point */									\
 		FIBER_CONCAT(FIBER_LABEL, __LINE__):							\
@@ -158,22 +157,9 @@ static void socket_timeout(struct fiber_timer *ftimer, void *data)
 		(_ftask)->tier--;									\
 		if (ret == ERR_INPROGRESS) {								\
 			(_ftask)->labels[(_ftask)->tier] = &&FIBER_CONCAT(FIBER_LABEL, __LINE__);	\
-			(_sio)->req = req;								\
-			(_sio)->last_ftask = (_ftask);							\
-			(_sio)->yield_reason = (_ftask)->yield_reason;					\
-			(req)->ftask = (_ftask);							\
-			if (req->timeout <= FIBER_MSLEEP_MAX) {						\
-				fiber_timer_mod(&(_sio)->timer, req->timeout,				\
-					socket_timeout, req);						\
-			}										\
 			return ret;									\
 		} else {										\
-			(_sio)->req = NULL;								\
-			(_sio)->yield_reason = FIBER_YIELD_R_NONE;					\
-			fiber_timer_del(&(_sio)->timer);						\
 			req->ret = ret;									\
-			req->ftask = NULL;								\
-			(_ftask)->last_ret = ERR_OK;							\
 		}											\
 	} while (0)
 
@@ -184,11 +170,11 @@ int socket_accept(struct fiber_task *ftask, void *arg)
 	if (!sock->cls->accept) {
 		SOCK_REQ_RETURN(req, ERR_NOTSUPPORTED);
 	}
-	if (unlikely(sock->rx_io.req)) {
+	if (unlikely(sock->io[SOCK_IO_OP_RX].in_progress)) {
 		SOCK_REQ_RETURN(req, ERR_BUSY);
 	}
 
-	FIBER_SOCKET_SUBCO_1(ftask, sock->cls->accept, arg, &sock->rx_io);
+	FIBER_SOCKET_SUBCO_1(ftask, sock->cls->accept, arg);
 	FIBER_SOCKET_END(ftask, ret);
 }
 
@@ -199,11 +185,11 @@ int socket_connect(struct fiber_task *ftask, void *arg)
 	if (!sock->cls->connect) {
 		SOCK_REQ_RETURN(req, ERR_NOTSUPPORTED);
 	}
-	if (unlikely(sock->tx_io.req)) {
+	if (unlikely(sock->io[SOCK_IO_OP_TX].in_progress)) {
 		SOCK_REQ_RETURN(req, ERR_BUSY);
 	}
 
-	FIBER_SOCKET_SUBCO_1(ftask, sock->cls->connect, arg, &sock->tx_io);
+	FIBER_SOCKET_SUBCO_1(ftask, sock->cls->connect, arg);
 	FIBER_SOCKET_END(ftask, ret);
 }
 
@@ -211,11 +197,11 @@ int socket_shutdown(struct fiber_task *ftask, void *arg)
 {
 	FIBER_SOCKET_BEGIN(ftask, struct socket, arg);
 
-	if (unlikely(sock->shutdown_io.req)) {
+	if (unlikely(sock->io[SOCK_IO_OP_SHUTDOWN].in_progress)) {
 		SOCK_REQ_RETURN(req, ERR_BUSY);
 	}
 
-	FIBER_SOCKET_SUBCO_1(ftask, sock->cls->shutdown, arg, &sock->shutdown_io);
+	FIBER_SOCKET_SUBCO_1(ftask, sock->cls->shutdown, arg);
 	FIBER_SOCKET_END(ftask, ret);
 }
 
@@ -227,36 +213,18 @@ int socket_shutdown(struct fiber_task *ftask, void *arg)
 		(_ftask)->tier--;									\
 		if (ret == ERR_INPROGRESS) {								\
 			(_ftask)->labels[(_ftask)->tier] = &&FIBER_CONCAT(FIBER_LABEL, __LINE__);	\
-			sock->tx_io.req = req;								\
-			sock->tx_io.last_ftask = (_ftask);						\
-			sock->tx_io.yield_reason = (_ftask)->yield_reason;				\
-			req->ftask = (_ftask);								\
-			if (req->timeout <= FIBER_MSLEEP_MAX) {						\
-				fiber_timer_mod(&sock->tx_io.timer, req->timeout,			\
-					socket_timeout, req);						\
-			}										\
 			return ret;									\
 		} else if (ret > 0) {									\
 			req->ret += ret;								\
 			assert(req->ret <= req->param.send.len);					\
-			(_ftask)->last_ret = ERR_OK;							\
 			if (req->ret == req->param.send.len						\
 					|| req->wait_type != SOCKIO_WAIT_ALL) {				\
-				sock->tx_io.req = NULL;							\
-				sock->tx_io.yield_reason = FIBER_YIELD_R_NONE;				\
-				req->ftask = NULL;							\
-				fiber_timer_del(&sock->tx_io.timer);					\
 				break;									\
 			}										\
 		} else if (ret < 0) {									\
 			if (req->ret <= 0) {								\
 				req->ret = ret;								\
 			}										\
-			sock->tx_io.req = NULL;								\
-			sock->tx_io.yield_reason = FIBER_YIELD_R_NONE;					\
-			req->ftask = NULL;								\
-			fiber_timer_del(&sock->tx_io.timer);						\
-			(_ftask)->last_ret = ERR_OK;							\
 			break;										\
 		} else {										\
 			/* cls->send/recv should never return 0 */					\
@@ -272,7 +240,7 @@ int socket_send(struct fiber_task *ftask, void *arg)
 			req->wait_type == SOCKIO_WAIT_ALL) {
 		req->wait_type = SOCKIO_WAIT_NORMAL;
 	}
-	if (unlikely(sock->tx_io.req)) {
+	if (unlikely(sock->io[SOCK_IO_OP_TX].in_progress)) {
 		SOCK_REQ_RETURN(req, ERR_BUSY);
 	}
 
@@ -288,14 +256,6 @@ int socket_send(struct fiber_task *ftask, void *arg)
 		(_ftask)->tier--;									\
 		if (ret == ERR_INPROGRESS) {								\
 			(_ftask)->labels[(_ftask)->tier] = &&FIBER_CONCAT(FIBER_LABEL, __LINE__);	\
-			sock->rx_io.req = req;								\
-			sock->rx_io.last_ftask = (_ftask);						\
-			sock->rx_io.yield_reason = (_ftask)->yield_reason;				\
-			req->ftask = (_ftask);								\
-			if (req->timeout <= FIBER_MSLEEP_MAX) {						\
-				fiber_timer_mod(&sock->rx_io.timer, req->timeout,			\
-					socket_timeout, req);						\
-			}										\
 			return ret;									\
 		} else if (ret > 0) {									\
 			req->ret += ret;								\
@@ -303,21 +263,12 @@ int socket_send(struct fiber_task *ftask, void *arg)
 			(_ftask)->last_ret = ERR_OK;							\
 			if (req->ret == req->param.recv.len						\
 					|| req->wait_type != SOCKIO_WAIT_ALL) {				\
-				sock->rx_io.req = NULL;							\
-				sock->rx_io.yield_reason = FIBER_YIELD_R_NONE;				\
-				req->ftask = NULL;							\
-				fiber_timer_del(&sock->rx_io.timer);					\
 				break;									\
 			}										\
 		} else if (ret < 0) {									\
 			if (req->ret <= 0) {								\
 				req->ret = ret;								\
 			}										\
-			sock->rx_io.req = NULL;								\
-			sock->rx_io.yield_reason = FIBER_YIELD_R_NONE;					\
-			req->ftask = NULL;								\
-			fiber_timer_del(&sock->rx_io.timer);						\
-			(_ftask)->last_ret = ERR_OK;							\
 			break;										\
 		} else {										\
 			/* cls->send/recv should never return 0 */					\
@@ -334,7 +285,7 @@ int socket_recv(struct fiber_task *ftask, void *arg)
 		req->wait_type = SOCKIO_WAIT_NORMAL;
 	}
 
-	if (unlikely(sock->rx_io.req)) {
+	if (unlikely(sock->io[SOCK_IO_OP_RX].in_progress)) {
 		SOCK_REQ_RETURN(req, ERR_BUSY);
 	}
 
@@ -346,8 +297,6 @@ int socket_recv(struct fiber_task *ftask, void *arg)
 void socket_init_connect_req(struct socket *s, struct socket_req *req,
 	const struct sockaddr_ex *addr, int is_ssl, unsigned long timeout)
 {
-	unsigned int i;
-
 	req->s = s;
 	req->ret = 0;
 	req->ftask = NULL;
@@ -356,16 +305,12 @@ void socket_init_connect_req(struct socket *s, struct socket_req *req,
 	req->wait_type = SOCKIO_WAIT_NORMAL;
 	req->param.conn.addr = addr;
 	req->param.conn.flags = (is_ssl ? SOCK_REQP_F_SSL : 0);
-	for (i = 0; i < ARRAY_SIZE(req->extra); i++) {
-		req->extra[i] = 0;
-	}
+	memset(&req->u, 0, sizeof(req->u));
 }
 
 void socket_init_accept_req(struct socket *s, struct socket_req *req,
 	struct sockaddr_ex *addr, unsigned long timeout)
 {
-	unsigned int i;
-
 	req->s = s;
 	req->ret = 0;
 	req->ftask = NULL;
@@ -374,16 +319,12 @@ void socket_init_accept_req(struct socket *s, struct socket_req *req,
 	req->wait_type = SOCKIO_WAIT_NORMAL;
 	req->param.accept.s = NULL;
 	req->param.accept.src_addr = addr;
-	for (i = 0; i < ARRAY_SIZE(req->extra); i++) {
-		req->extra[i] = 0;
-	}
+	memset(&req->u, 0, sizeof(req->u));
 }
 
 void socket_init_send_req(struct socket *s, struct socket_req *req, const struct sockaddr_ex *dest_addr,
 	const uint8_t *buf, unsigned int len, uint16_t wait_type, unsigned long timeout)
 {
-	unsigned int i;
-
 	req->s = s;
 	req->ret = 0;
 	req->ftask = NULL;
@@ -393,16 +334,12 @@ void socket_init_send_req(struct socket *s, struct socket_req *req, const struct
 	req->param.send.dest_addr = dest_addr;
 	req->param.send.buf = buf;
 	req->param.send.len = len;
-	for (i = 0; i < ARRAY_SIZE(req->extra); i++) {
-		req->extra[i] = 0;
-	}
+	memset(&req->u, 0, sizeof(req->u));
 }
 
 void socket_init_recv_req(struct socket *s, struct socket_req *req, struct sockaddr_ex *src_addr,
 	uint8_t *buf, unsigned int len, uint16_t wait_type, unsigned long timeout)
 {
-	unsigned int i;
-
 	req->s = s;
 	req->ret = 0;
 	req->ftask = NULL;
@@ -412,15 +349,11 @@ void socket_init_recv_req(struct socket *s, struct socket_req *req, struct socka
 	req->param.recv.src_addr = src_addr;
 	req->param.recv.buf = buf;
 	req->param.recv.len = len;
-	for (i = 0; i < ARRAY_SIZE(req->extra); i++) {
-		req->extra[i] = 0;
-	}
+	memset(&req->u, 0, sizeof(req->u));
 }
 
 void socket_init_shutdown_req(struct socket *s, struct socket_req *req, int how, unsigned long timeout)
 {
-	unsigned int i;
-
 	req->s = s;
 	req->ret = 0;
 	req->ftask = NULL;
@@ -428,7 +361,5 @@ void socket_init_shutdown_req(struct socket *s, struct socket_req *req, int how,
 	req->io_type = SOCKIO_T_SHUTDOWN;
 	req->wait_type = SOCKIO_WAIT_NORMAL;
 	req->param.shutdown.how = how;
-	for (i = 0; i < ARRAY_SIZE(req->extra); i++) {
-		req->extra[i] = 0;
-	}
+	memset(&req->u, 0, sizeof(req->u));
 }

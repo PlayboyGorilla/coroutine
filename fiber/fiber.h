@@ -77,10 +77,8 @@ struct fiber_task {
 #define FIBER_YIELD_R_CHILD_FIBER	5
 	unsigned int		yield_reason;
 	struct socket		*yield_sock;
-	struct socket_req	*yield_req;
 	unsigned int		last_yield_reason;
 	struct socket		*last_yield_sock;
-	struct socket_req	*last_yield_req;
 	struct sys_lock		lock;
 	struct sys_cond		cond;
 	struct list_node	hash_node;
@@ -169,7 +167,6 @@ extern int fiber_msleep(struct fiber_task *, unsigned long ms);
 			(_ftask)->labels[(_ftask)->tier] = &&FIBER_CONCAT(FIBER_LABEL, __LINE__);	\
 			(_ftask)->yield_reason = FIBER_YIELD_R_MSLEEP;					\
 			(_ftask)->yield_sock = NULL;							\
-			(_ftask)->yield_req = NULL;							\
 			return ret;									\
 		} else if (ret != ERR_TIMEOUT) {							\
 			assert(ret != ERR_OK);								\
@@ -206,7 +203,6 @@ extern int fiber_get_user_event(struct fiber_task *, struct fiber_user_event **u
 			(_ftask)->labels[(_ftask)->tier] = &&FIBER_CONCAT(FIBER_LABEL, __LINE__);	\
 			(_ftask)->yield_reason = FIBER_YIELD_R_WAIT4_UEVENT;				\
 			(_ftask)->yield_sock = NULL;							\
-			(_ftask)->yield_req = NULL;							\
 			return ret;									\
 		}											\
 	} while (0)
