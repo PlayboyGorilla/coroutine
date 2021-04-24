@@ -337,11 +337,6 @@ static int linux_tcp_close(struct socket *s)
 	return ERR_OK;
 }
 
-static void linux_tcp_cancel(struct socket_req *req)
-{
-//TODO
-}
-
 struct socket_class sys_tcp_socket = {
 	.domain		= SOCK_DOMAIN_SYS_INET,
 	.type		= SOCK_TYPE_STREAM,
@@ -358,7 +353,6 @@ struct socket_class sys_tcp_socket = {
 	.shutdown	= linux_tcp_shutdown,
 	.send		= linux_tcp_send,
 	.recv		= linux_tcp_recv,
-	.cancel		= linux_tcp_cancel,
 	.setsockopt	= common_socket_setopt,
 };
 
@@ -460,11 +454,6 @@ static int linux_udp_close(struct socket *s)
 	return ERR_OK;
 }
 
-static void linux_udp_cancel(struct socket_req *req)
-{
-//TODO
-}
-
 struct socket_class sys_udp_socket = {
 	.domain		= SOCK_DOMAIN_SYS_INET,
 	.type		= SOCK_TYPE_DGRAM,
@@ -480,7 +469,6 @@ struct socket_class sys_udp_socket = {
 	.shutdown	= linux_udp_shutdown,
 	.send		= linux_udp_send,
 	.recv		= linux_udp_recv,
-	.cancel		= linux_udp_cancel,
 	.setsockopt	= common_socket_setopt,
 };
 
@@ -581,11 +569,6 @@ yield_out:
 	FIBER_SOCKET_END(ftask, ERR_OK);
 }
 
-static void linux_icmp_cancel(struct socket_req *req)
-{
-//TODO
-}
-
 struct socket_class sys_icmp_socket = {
 	.domain		= SOCK_DOMAIN_SYS_INET,
 	.type		= SOCK_TYPE_RAW,
@@ -601,7 +584,6 @@ struct socket_class sys_icmp_socket = {
 	.shutdown	= linux_icmp_shutdown,
 	.send		= linux_icmp_send,
 	.recv		= linux_icmp_recv,
-	.cancel		= linux_icmp_cancel,
 	.setsockopt	= common_socket_setopt,
 };
 

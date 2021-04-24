@@ -79,7 +79,6 @@ struct socket_class {
 	fiber_callback	send;
 	fiber_callback	recv;
 
-	void (*cancel)(struct socket_req *);
 	int (*setsockopt)(struct socket *, int level, int optname, const void *optval, socklen_t optlen);
 
 	/* internal -- never touch directly */

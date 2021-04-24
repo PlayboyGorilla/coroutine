@@ -346,11 +346,6 @@ static int osx_tcp_close(struct socket *s)
 	return ERR_OK;
 }
 
-static void osx_tcp_cancel(struct socket_req *req)
-{
-//TODO
-}
-
 struct socket_class sys_tcp_socket = {
 	.domain		= SOCK_DOMAIN_SYS_INET,
 	.type		= SOCK_TYPE_STREAM,
@@ -366,7 +361,6 @@ struct socket_class sys_tcp_socket = {
 	.shutdown	= osx_tcp_shutdown,
 	.send		= osx_tcp_send,
 	.recv		= osx_tcp_recv,
-	.cancel		= osx_tcp_cancel,
 	.setsockopt	= common_socket_setopt,
 };
 
@@ -469,11 +463,6 @@ static int osx_udp_close(struct socket *s)
 	return ERR_OK;
 }
 
-static void osx_udp_cancel(struct socket_req *req)
-{
-//TODO
-}
-
 struct socket_class sys_udp_socket = {
 	.domain		= SOCK_DOMAIN_SYS_INET,
 	.type		= SOCK_TYPE_DGRAM,
@@ -489,7 +478,6 @@ struct socket_class sys_udp_socket = {
 	.shutdown	= osx_udp_shutdown,
 	.send		= osx_udp_send,
 	.recv		= osx_udp_recv,
-	.cancel		= osx_udp_cancel,
 	.setsockopt	= common_socket_setopt,
 };
 
@@ -584,11 +572,6 @@ yield_out:
 	FIBER_SOCKET_END(ftask, ERR_OK);
 }
 
-static void osx_icmp_cancel(struct socket_req *req)
-{
-//TODO
-}
-
 struct socket_class sys_icmp_socket = {
 	.domain		= SOCK_DOMAIN_SYS_INET,
 	.type		= SOCK_TYPE_RAW,
@@ -604,7 +587,6 @@ struct socket_class sys_icmp_socket = {
 	.shutdown	= osx_icmp_shutdown,
 	.send		= osx_icmp_send,
 	.recv		= osx_icmp_recv,
-	.cancel		= osx_icmp_cancel,
 	.setsockopt	= common_socket_setopt,
 };
 
