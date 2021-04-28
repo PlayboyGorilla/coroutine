@@ -11,6 +11,7 @@ The implementation is cross-platform, with Linux and MAC OS X currently supporte
 
 # Build and Run
 [shell] cd demo
+
 Edit os.mk to make 'OS' either osx or linux, depending on the system you are working in.
 
 [shell] make all
