@@ -10,9 +10,9 @@ Asynchronous socket operations are provided as coroutine tasklets as well. This 
 The implementation is cross-platform, with Linux and MAC OS X currently supported.
 
 # Build and Run
-#cd demo
+\#cd demo
 Edit os.mk to make 'OS' either osx or linux, depending on the system you are working in.
-#make all
+\#make all
 
 # Features
 1. Asynchronous socket
