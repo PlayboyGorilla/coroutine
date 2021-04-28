@@ -1,4 +1,4 @@
-Introduction
+# Introduction
 This is an open-source implementation of coroutine. The fundamental idea is based on http://dunkels.com/adam/pt/. All codes are written in C.
 
 The project provides a means to write light-weight tasks without creating multiple threads, by letting different tasks runing in the context of one thread. The benefits are
@@ -9,12 +9,16 @@ Asynchronous socket operations are provided as coroutine tasklets as well. This 
 
 The implementation is cross-platform, with Linux and MAC OS X currently supported.
 
-Build and Run
+# Build and Run
 #cd demo
 Edit os.mk to make 'OS' either osx or linux, depending on the system you are working in.
 #make all
 
-Features
+# Features
 1. Asynchronous socket
 2. Timers
 3. Task yielding and scheduling
+
+# TBD
+1. A singly-linked list is needed
+2. FIBER_SOCKET_XXX() further refactoring needed
