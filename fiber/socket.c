@@ -219,6 +219,7 @@ int socket_shutdown(struct fiber_task *ftask, void *arg)
 			assert(req->ret <= req->param.send.len);					\
 			if (req->ret == req->param.send.len						\
 					|| req->wait_type != SOCKIO_WAIT_ALL) {				\
+				ret = ERR_OK;								\
 				break;									\
 			}										\
 		} else if (ret < 0) {									\
@@ -263,6 +264,7 @@ int socket_send(struct fiber_task *ftask, void *arg)
 			(_ftask)->last_ret = ERR_OK;							\
 			if (req->ret == req->param.recv.len						\
 					|| req->wait_type != SOCKIO_WAIT_ALL) {				\
+				ret = ERR_OK;								\
 				break;									\
 			}										\
 		} else if (ret < 0) {									\

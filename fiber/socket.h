@@ -32,12 +32,13 @@ struct socket {
 	unsigned int		priv_len;
 };
 
+static inline int socket_is_in_progress(const struct socket *sock, unsigned int which_op)
+{
+	return sock->io[which_op].in_progress;
+}
+
 #define SOCK_DOMAIN_SYS_INET	1
 #define SOCK_DOMAIN_SYS_INET6	2
-#define SOCK_DOMAIN_FFIP_INET	3
-#define SOCK_DOMAIN_FFIP_INET6	4
-#define SOCK_DOMAIN_TUNNEL	5
-#define SOCK_DOMAIN_VPROXY	6
 
 #define SOCK_TYPE_STREAM	1 
 #define SOCK_TYPE_DGRAM		2
