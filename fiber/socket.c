@@ -35,9 +35,6 @@ void unregister_socket_class(struct socket_class *sockcls)
 static inline void socket_init_io(struct socket_io *sio)
 {
 	sio->in_progress = 0;
-	sio->last_ftask = NULL;
-	sio->yield_reason = FIBER_YIELD_R_NONE;
-	fiber_timer_init(&sio->timer);
 }
 
 struct socket *socket_create_from_class(struct socket_class *sockcls, unsigned int priv_data, void *init_data)
@@ -72,21 +69,9 @@ struct socket *socket_create(int domain, int type, int protocol, unsigned int pr
 	return NULL;
 }
 
-static void socket_close_check_sio(struct socket *s, struct socket_io *sio)
+static inline void socket_close_check_sio(struct socket *s, struct socket_io *sio)
 {
-	struct fiber_task *ftask = sio->last_ftask;
-
 	assert(sio->in_progress == 0);
-
-	if (!ftask) {
-		return;
-	}
-
-	assert(fiber_loop_is_current(ftask->floop));
-	if (ftask->last_yield_sock == s) {
-		ftask->last_yield_reason = FIBER_YIELD_R_NONE;
-		ftask->last_yield_sock = NULL;
-	}
 }
 
 /*
@@ -134,13 +119,6 @@ void socket_cancel(struct socket_req *req)
 	fiber_schedule(req->ftask, ERR_ABORTED);
 }
 
-void socket_timeout(struct fiber_timer *ftimer, void *data)
-{
-	struct socket_req *req = data;
-
-	fiber_schedule(req->ftask, ERR_TIMEOUT);
-}
-
 #define SOCK_REQ_RETURN(req, _ret)	\
 	do {				\
 		(req)->ret = (_ret);	\
@@ -148,7 +126,7 @@ void socket_timeout(struct fiber_timer *ftimer, void *data)
 	} while(0)
 
 
-#define FIBER_SOCKET_SUBCO_1(_ftask, _subco, _arg)							\
+#define FIBER_SOCKET_SUBCO_1(_ftask, _subco, _arg, _sio)						\
 	do {												\
 		/* re-entry point */									\
 		FIBER_CONCAT(FIBER_LABEL, __LINE__):							\
@@ -157,9 +135,13 @@ void socket_timeout(struct fiber_timer *ftimer, void *data)
 		(_ftask)->tier--;									\
 		if (ret == ERR_INPROGRESS) {								\
 			(_ftask)->labels[(_ftask)->tier] = &&FIBER_CONCAT(FIBER_LABEL, __LINE__);	\
+			(_sio)->in_progress = 1;							\
+			req->ftask = (_ftask);								\
 			return ret;									\
 		} else {										\
+			(_sio)->in_progress = 0;							\
 			req->ret = ret;									\
+			req->ftask = NULL;								\
 		}											\
 	} while (0)
 
@@ -174,7 +156,7 @@ int socket_accept(struct fiber_task *ftask, void *arg)
 		SOCK_REQ_RETURN(req, ERR_BUSY);
 	}
 
-	FIBER_SOCKET_SUBCO_1(ftask, sock->cls->accept, arg);
+	FIBER_SOCKET_SUBCO_1(ftask, sock->cls->accept, arg, &sock->io[SOCK_IO_OP_RX]);
 	FIBER_SOCKET_END(ftask, ret);
 }
 
@@ -189,7 +171,7 @@ int socket_connect(struct fiber_task *ftask, void *arg)
 		SOCK_REQ_RETURN(req, ERR_BUSY);
 	}
 
-	FIBER_SOCKET_SUBCO_1(ftask, sock->cls->connect, arg);
+	FIBER_SOCKET_SUBCO_1(ftask, sock->cls->connect, arg, &sock->io[SOCK_IO_OP_TX]);
 	FIBER_SOCKET_END(ftask, ret);
 }
 
@@ -201,7 +183,7 @@ int socket_shutdown(struct fiber_task *ftask, void *arg)
 		SOCK_REQ_RETURN(req, ERR_BUSY);
 	}
 
-	FIBER_SOCKET_SUBCO_1(ftask, sock->cls->shutdown, arg);
+	FIBER_SOCKET_SUBCO_1(ftask, sock->cls->shutdown, arg, &sock->io[SOCK_IO_OP_SHUTDOWN]);
 	FIBER_SOCKET_END(ftask, ret);
 }
 
@@ -213,12 +195,16 @@ int socket_shutdown(struct fiber_task *ftask, void *arg)
 		(_ftask)->tier--;									\
 		if (ret == ERR_INPROGRESS) {								\
 			(_ftask)->labels[(_ftask)->tier] = &&FIBER_CONCAT(FIBER_LABEL, __LINE__);	\
+			sock->io[SOCK_IO_OP_TX].in_progress = 1;					\
+			req->ftask = (_ftask);								\
 			return ret;									\
 		} else if (ret > 0) {									\
 			req->ret += ret;								\
 			assert(req->ret <= req->param.send.len);					\
 			if (req->ret == req->param.send.len						\
 					|| req->wait_type != SOCKIO_WAIT_ALL) {				\
+				sock->io[SOCK_IO_OP_TX].in_progress = 0;				\
+				req->ftask = NULL;							\
 				ret = ERR_OK;								\
 				break;									\
 			}										\
@@ -226,6 +212,8 @@ int socket_shutdown(struct fiber_task *ftask, void *arg)
 			if (req->ret <= 0) {								\
 				req->ret = ret;								\
 			}										\
+			sock->io[SOCK_IO_OP_TX].in_progress = 0;					\
+			req->ftask = NULL;								\
 			break;										\
 		} else {										\
 			/* cls->send/recv should never return 0 */					\
@@ -257,6 +245,8 @@ int socket_send(struct fiber_task *ftask, void *arg)
 		(_ftask)->tier--;									\
 		if (ret == ERR_INPROGRESS) {								\
 			(_ftask)->labels[(_ftask)->tier] = &&FIBER_CONCAT(FIBER_LABEL, __LINE__);	\
+			sock->io[SOCK_IO_OP_RX].in_progress = 1;					\
+			req->ftask = (_ftask);								\
 			return ret;									\
 		} else if (ret > 0) {									\
 			req->ret += ret;								\
@@ -264,6 +254,8 @@ int socket_send(struct fiber_task *ftask, void *arg)
 			(_ftask)->last_ret = ERR_OK;							\
 			if (req->ret == req->param.recv.len						\
 					|| req->wait_type != SOCKIO_WAIT_ALL) {				\
+				sock->io[SOCK_IO_OP_RX].in_progress = 0;				\
+				req->ftask = NULL;							\
 				ret = ERR_OK;								\
 				break;									\
 			}										\
@@ -271,6 +263,8 @@ int socket_send(struct fiber_task *ftask, void *arg)
 			if (req->ret <= 0) {								\
 				req->ret = ret;								\
 			}										\
+			sock->io[SOCK_IO_OP_RX].in_progress = 0;					\
+			req->ftask = NULL;								\
 			break;										\
 		} else {										\
 			/* cls->send/recv should never return 0 */					\

@@ -7,8 +7,15 @@
 #include <stdint.h>
 
 #include "fiber/socket.h"
-
+#include "hosal/fiber.h"
 #include "openssl/ssl.h"
+
+struct fiber_task;
+struct epoll_fiber_info {
+	struct fiber_task	*ftask[SYS_FIBER_FTASK_MAX];
+	uint32_t		event_mask; /* (EPOLLIN | EPOLLRDHUP) or EPOLLOUT */
+	uint8_t			on;
+ };
 
 struct linux_socket {
 	struct socket		sock;
@@ -30,6 +37,8 @@ struct linux_socket {
 #define SOCK_S_SSL_CONNECTED		BIT(2)
 #define SOCK_S_SSL_SCHED_SHUTDOWN	BIT(3)
 	unsigned int		state;
+	struct epoll_fiber_info	read_info;
+	struct epoll_fiber_info	write_info;
 	uint32_t		epoll_events;
 };
 

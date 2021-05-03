@@ -6,7 +6,15 @@
 #include <string.h>
 #include <stdint.h>
 
+#include "hosal/fiber.h"
 #include "fiber/socket.h"
+
+struct fiber_task;
+struct kqueue_event_info {
+	struct fiber_task       *ftask[SYS_FIBER_FTASK_MAX];
+	int16_t                 filter; /* EVFILT_READ or EVFILT_WRITE */
+	uint8_t                 on;
+};
 
 struct osx_socket {
 	struct socket		sock;
@@ -20,8 +28,8 @@ struct osx_socket {
 	unsigned int		type;
 #define SOCK_S_TCP_CONNECTED		BIT(0)
 	unsigned int		state;
-	uint8_t			monitor_read;
-	uint8_t			monitor_write;
+	struct kqueue_event_info	read_info;
+	struct kqueue_event_info	write_info;
 };
 
 #endif

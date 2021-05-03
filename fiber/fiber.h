@@ -110,6 +110,52 @@ extern void fiber_wait(struct fiber_task *);
 extern void fiber_schedule(struct fiber_task *ftask, int last_ret);
 
 /* fiber primitive -- invoked by fiber taslkets */
+extern void fiber_timeout(struct fiber_timer *ftimer, void *data);
+#define FIBER_YIELD(_ftask, _sock, _reason, _timeout_ms)						\
+	do {												\
+		ret = ERR_INPROGRESS;									\
+		FIBER_CONCAT(FIBER_LABEL, __LINE__):							\
+		if (ret == ERR_INPROGRESS) {								\
+			(_ftask)->labels[(_ftask)->tier] = &&FIBER_CONCAT(FIBER_LABEL, __LINE__);	\
+			(_ftask)->yield_reason = (_reason);						\
+			(_ftask)->yield_sock = (_sock);							\
+			if ((_timeout_ms) <= FIBER_MSLEEP_MAX) {					\
+				fiber_timer_mod(&(_ftask)->timer, (_timeout_ms),			\
+					fiber_timeout, NULL);						\
+			}										\
+			return ret;									\
+		} else {										\
+                        fiber_timer_del(&(_ftask)->timer);						\
+			(_ftask)->yield_reason = FIBER_YIELD_R_NONE;					\
+			(_ftask)->yield_sock = NULL;							\
+                        (_ftask)->last_ret = ERR_OK;							\
+		}											\
+	} while(0)
+
+#define FIBER_YIELD_ERR_RETURN(_ftask, _sock, _reason, _timeout_ms)						\
+	do {												\
+		ret = ERR_INPROGRESS;									\
+		FIBER_CONCAT(FIBER_LABEL, __LINE__):							\
+		if (ret == ERR_INPROGRESS) {								\
+			(_ftask)->labels[(_ftask)->tier] = &&FIBER_CONCAT(FIBER_LABEL, __LINE__);	\
+			(_ftask)->yield_reason = (_reason);						\
+			(_ftask)->yield_sock = (_sock);							\
+			if ((_timeout_ms) <= FIBER_MSLEEP_MAX) {					\
+				fiber_timer_mod(&(_ftask)->timer, (_timeout_ms),			\
+					fiber_timeout, NULL);						\
+			}										\
+			return ret;									\
+		} else {										\
+                        fiber_timer_del(&(_ftask)->timer);						\
+			(_ftask)->yield_reason = FIBER_YIELD_R_NONE;					\
+			(_ftask)->yield_sock = NULL;							\
+                        (_ftask)->last_ret = ERR_OK;							\
+			if (ret != ERR_OK) {								\
+				return ret;								\
+			}										\
+		}											\
+	} while(0)
+
 #define FIBER_CONCAT2(s1, s2)	s1##s2
 #define FIBER_CONCAT(s1, s2)	FIBER_CONCAT2(s1, s2)
 

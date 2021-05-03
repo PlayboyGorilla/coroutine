@@ -317,6 +317,14 @@ void fiber_schedule(struct fiber_task *ftask, int last_ret)
 	list_add_tail(&floop->task_ready, &ftask->node);
 }
 
+void fiber_timeout(struct fiber_timer *ftimer, void *data)
+{
+	struct fiber_task *ftask;
+
+	ftask = container_of(ftimer, struct fiber_task, timer);
+	fiber_schedule(ftask, ERR_TIMEOUT);
+}
+
 static void fiber_timer_sched(struct fiber_loop *floop, struct fiber_timer *ftimer,
 	unsigned long ms, void (*timer_func)(struct fiber_timer *, void *), void *data)
 {
@@ -442,22 +450,6 @@ int fiber_get_user_event(struct fiber_task *ftask, struct fiber_user_event **uev
 	return ERR_OK;
 }
 
-static unsigned int fiber_sock_wait4_nr(struct socket *s,
-	unsigned int yield_reason)
-{
-	unsigned int nr = 0;
-	unsigned int i;
-
-	for (i = 0; i < ARRAY_SIZE(s->io); i++) {
-		struct socket_io *sio = &s->io[i];
-
-		if (sio->in_progress && sio->yield_reason == yield_reason) {
-			nr++;
-		}
-	}
-	return nr;
-}
-
 /*
  * Called by fiber tasklets -- free a user event
  * when a fiber tasklet is done with it
@@ -488,6 +480,8 @@ static void fiber_task_done(struct fiber_task *ftask, int ret)
 	struct fiber_user_event *uevent;
 
 	fiber_may_del_old_monitor(ftask);
+	ftask->last_yield_sock = NULL;
+	ftask->last_yield_reason = FIBER_YIELD_R_NONE;
 
 	ftask->result = ret;
 	hash_del(floop->task_table, ftask);
@@ -508,8 +502,9 @@ static void fiber_task_done(struct fiber_task *ftask, int ret)
 	}
 
 	assert(floop->task_nr > 0);
-	if (--floop->task_nr == 0 && floop->exit_sched)
+	if (--floop->task_nr == 0 && floop->exit_sched) {
 		fiber_loop_exit(floop);
+	}
 }
 
 static void fiber_may_del_old_monitor(struct fiber_task *ftask)
@@ -519,11 +514,11 @@ static void fiber_may_del_old_monitor(struct fiber_task *ftask)
 	}
 
 	if (ftask->last_yield_reason == FIBER_YIELD_R_WAIT4_READ) {
-		sys_fiber_adjust_monitor(&ftask->floop->plat_data, ftask->last_yield_sock,
-			SYS_MON_F_READ_CLEAR, SYS_MON_F_WRITE_UNCHANGE);
+		sys_fiber_read_monitor(ftask, &ftask->floop->plat_data, ftask->last_yield_sock,
+			0);
 	} else if (ftask->last_yield_reason == FIBER_YIELD_R_WAIT4_WRITE) {
-		sys_fiber_adjust_monitor(&ftask->floop->plat_data, ftask->last_yield_sock,
-			SYS_MON_F_READ_UNCHANGE, SYS_MON_F_WRITE_CLEAR);
+		sys_fiber_write_monitor(ftask, &ftask->floop->plat_data, ftask->last_yield_sock,
+ 			0);
 	} else {
 		assert(ftask->last_yield_reason == FIBER_YIELD_R_NONE);
 	}
@@ -542,15 +537,11 @@ static void fiber_task_suspend(struct fiber_task *ftask)
 	fiber_may_del_old_monitor(ftask);
 
 	if (ftask->yield_reason == FIBER_YIELD_R_WAIT4_READ) {
-		if (fiber_sock_wait4_nr(ftask->yield_sock, FIBER_YIELD_R_WAIT4_READ) == 1) {
-			sys_fiber_adjust_monitor(&ftask->floop->plat_data, ftask->yield_sock,
-				SYS_MON_F_READ_SET, SYS_MON_F_WRITE_UNCHANGE);
-		}
+		sys_fiber_read_monitor(ftask, &ftask->floop->plat_data, ftask->yield_sock,
+			1);
 	} else if (ftask->yield_reason == FIBER_YIELD_R_WAIT4_WRITE) {
-		if (fiber_sock_wait4_nr(ftask->yield_sock, FIBER_YIELD_R_WAIT4_WRITE) == 1) {
-			sys_fiber_adjust_monitor(&ftask->floop->plat_data, ftask->yield_sock,
-				SYS_MON_F_READ_UNCHANGE, SYS_MON_F_WRITE_SET);
-		}
+		sys_fiber_write_monitor(ftask, &ftask->floop->plat_data, ftask->yield_sock,
+ 			1);
 	}
 
 	/* Get ready for next suspend */
@@ -622,15 +613,16 @@ static void fiber_event_read(struct fiber_loop *floop,
 	const struct fiber_event *fevent)
 {
 	struct socket *s = (struct socket *)(fevent->data);
+	struct fiber_task *read_ftask[SYS_FIBER_FTASK_MAX];
 	unsigned int nr = 0;
 	unsigned int i;
 
-	for (i = 0; i < ARRAY_SIZE(s->io); i++) {
-		struct socket_io *sio = &s->io[i];
+	sys_fiber_read_ftask(s, read_ftask);
 
-		if (sio->in_progress && sio->yield_reason == FIBER_YIELD_R_WAIT4_READ) {
+	for (i = 0; i < ARRAY_SIZE(read_ftask); i++) {
+		if (read_ftask[i]) {
 			nr++;
-			fiber_schedule(sio->last_ftask, ERR_OK);
+			fiber_schedule(read_ftask[i], ERR_OK);
 		}
 	}
 
@@ -642,15 +634,16 @@ static void fiber_event_write(struct fiber_loop *floop,
 	const struct fiber_event *fevent)
 {
 	struct socket *s = (struct socket *)(fevent->data);
+	struct fiber_task *write_ftask[SYS_FIBER_FTASK_MAX];
 	unsigned int nr = 0;
 	unsigned int i;
 
-	for (i = 0; i < ARRAY_SIZE(s->io); i++) {
-		struct socket_io *sio = &s->io[i];
+	sys_fiber_write_ftask(s, write_ftask);
 
-		if (sio->in_progress && sio->yield_reason == FIBER_YIELD_R_WAIT4_WRITE) {
+	for (i = 0; i < ARRAY_SIZE(write_ftask); i++) {
+		if (write_ftask[i]) {
 			nr++;
-			fiber_schedule(sio->last_ftask, ERR_OK);
+			fiber_schedule(write_ftask[i], ERR_OK);
 		}
 	}
 
@@ -662,13 +655,22 @@ static void fiber_event_error(struct fiber_loop *floop,
 	const struct fiber_event *fevent)
 {
 	struct socket *s = (struct socket *)(fevent->data);
+	struct fiber_task *read_ftask[SYS_FIBER_FTASK_MAX];
+	struct fiber_task *write_ftask[SYS_FIBER_FTASK_MAX];
 	unsigned int i;
 
-	for (i = 0; i < ARRAY_SIZE(s->io); i++) {
-		struct socket_io *sio = &s->io[i];
+	sys_fiber_read_ftask(s, read_ftask);
+	sys_fiber_write_ftask(s, write_ftask);
 
-		if (sio->in_progress && sio->yield_reason != FIBER_YIELD_R_NONE) {
-			fiber_schedule(sio->last_ftask, ERR_OK);
+	for (i = 0; i < ARRAY_SIZE(read_ftask); i++) {
+		if (read_ftask[i]) {
+			fiber_schedule(read_ftask[i], ERR_OK);
+		}
+	}
+
+	for (i = 0; i < ARRAY_SIZE(write_ftask); i++) {
+		if (write_ftask[i]) {
+			fiber_schedule(write_ftask[i], ERR_OK);
 		}
 	}
 }

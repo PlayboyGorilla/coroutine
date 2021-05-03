@@ -114,30 +114,56 @@ static int socket_set_nonblock(int sock_fd)
 static struct socket *socket_wrap(int fd, unsigned int type, unsigned int priv_data)
 {
 	struct linux_socket *sock;
+	unsigned int aligned_size = ALIGN_UP(sizeof(struct linux_socket), sizeof(uint64_t));
 
-	if (socket_set_nonblock(fd) != ERR_OK)
+	if (socket_set_nonblock(fd) != ERR_OK) {
 		return NULL;
+	}
 
-	sock = (struct linux_socket *)malloc(sizeof(struct linux_socket) + priv_data);
-	if (!sock)
+	sock = (struct linux_socket *)malloc(aligned_size + priv_data);
+	if (!sock) {
 		return NULL;
+	}
 	memset(sock, 0, sizeof(struct linux_socket));
 
 	sock->fd = fd;
 	sock->type = type;
 	sock->epoll_events = 0;
+	sock->read_info.event_mask = (EPOLLIN | EPOLLRDHUP);
+	sock->write_info.event_mask = EPOLLOUT;
 
 	if (priv_data) {
-		sock->sock.priv_data = ((uint8_t *)sock) + sizeof(struct linux_socket);
+		sock->sock.priv_data = ((uint8_t *)sock) + aligned_size;
 		sock->sock.priv_len = priv_data;
 	}
 
 	return &sock->sock;
 }
 
+static void socket_unwrap_clear_ftask(struct socket *s,
+	struct epoll_fiber_info *info)
+{
+	struct fiber_task *ftask;
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(info->ftask); i++) {
+		ftask = info->ftask[i];
+
+		if (ftask) {
+			assert(ftask->last_yield_sock == s);
+			ftask->last_yield_sock = NULL;
+		}
+	}
+}
+
 /* return file descriptor of socket being wrapped by @sock */
 static void socket_unwrap(struct socket *s)
 {
+	struct linux_socket *sock = (struct linux_socket *)s;
+
+	socket_unwrap_clear_ftask(s, &sock->read_info);
+	socket_unwrap_clear_ftask(s, &sock->write_info);
+
 	free(s);
 }
 
@@ -216,7 +242,7 @@ static int linux_tcp_connect(struct fiber_task *ftask, void *arg)
 	}
 
 yield_out:
-	FIBER_SOCKET_YIELD(ftask, FIBER_YIELD_R_WAIT4_WRITE, req, req->s, SOCK_IO_OP_TX);
+	FIBER_YIELD(ftask, &sock->sock, FIBER_YIELD_R_WAIT4_WRITE, req->timeout);
 	/* check connect result */
 	ret = linux_tcp_get_connect_result(sock, req, ret);
 	FIBER_SOCKET_END(ftask, ret);
@@ -269,7 +295,7 @@ static int linux_tcp_accept(struct fiber_task *ftask, void *arg)
 		}
 		return ret;
 yield_out:
-		FIBER_SOCKET_YIELD_ERR_RETURN(ftask, FIBER_YIELD_R_WAIT4_READ, req, req->s, SOCK_IO_OP_RX);
+		FIBER_YIELD_ERR_RETURN(ftask, &sock->sock, FIBER_YIELD_R_WAIT4_READ, req->timeout);
 	} while(1);
 
 	/* Never here */
@@ -296,7 +322,7 @@ static int linux_tcp_send(struct fiber_task *ftask, void *arg)
 			return ret;
 		}
 	yield_out:
-		FIBER_SOCKET_YIELD_ERR_RETURN(ftask, FIBER_YIELD_R_WAIT4_WRITE, req, req->s, SOCK_IO_OP_TX);
+		FIBER_YIELD_ERR_RETURN(ftask, &sock->sock, FIBER_YIELD_R_WAIT4_WRITE, req->timeout);
 	} while (1);
 
 	/* Never here */
@@ -321,7 +347,7 @@ static int linux_tcp_recv(struct fiber_task *ftask, void *arg)
 			return ret;
 		}
 	yield_out:
-		FIBER_SOCKET_YIELD_ERR_RETURN(ftask, FIBER_YIELD_R_WAIT4_READ, req, req->s, SOCK_IO_OP_RX);
+		FIBER_YIELD_ERR_RETURN(ftask, &sock->sock, FIBER_YIELD_R_WAIT4_READ, req->timeout);
 	} while (1);
 
 	/* Never here */
@@ -410,7 +436,7 @@ static int linux_udp_send(struct fiber_task *ftask, void *arg)
 			return ret;
 		}
 yield_out:
-		FIBER_SOCKET_YIELD_ERR_RETURN(ftask, FIBER_YIELD_R_WAIT4_WRITE, req, req->s, SOCK_IO_OP_TX);
+		FIBER_YIELD_ERR_RETURN(ftask, &sock->sock, FIBER_YIELD_R_WAIT4_WRITE, req->timeout);
 	} while (1);
 
 	/* Never here */
@@ -438,7 +464,7 @@ static int linux_udp_recv(struct fiber_task *ftask, void *arg)
 			return ret;
 		}
 yield_out:
-		FIBER_SOCKET_YIELD_ERR_RETURN(ftask, FIBER_YIELD_R_WAIT4_READ, req, req->s, SOCK_IO_OP_RX);
+		FIBER_YIELD_ERR_RETURN(ftask, &sock->sock, FIBER_YIELD_R_WAIT4_READ, req->timeout);
 	} while (1);
 
 	/* Never here */
@@ -542,7 +568,7 @@ static int linux_icmp_send(struct fiber_task *ftask, void *arg)
 			return ret;
 		}
 yield_out:
-		FIBER_SOCKET_YIELD_ERR_RETURN(ftask, FIBER_YIELD_R_WAIT4_WRITE, req, req->s, SOCK_IO_OP_TX);
+		FIBER_YIELD_ERR_RETURN(ftask, &sock->sock, FIBER_YIELD_R_WAIT4_WRITE, req->timeout);
 	} while(1);
 
 	/* Never here */
@@ -570,7 +596,7 @@ static int linux_icmp_recv(struct fiber_task *ftask, void *arg)
 			return ret;
 		}
 yield_out:
-		FIBER_SOCKET_YIELD_ERR_RETURN(ftask, FIBER_YIELD_R_WAIT4_READ, req, req->s, SOCK_IO_OP_RX);
+		FIBER_YIELD_ERR_RETURN(ftask, &sock->sock, FIBER_YIELD_R_WAIT4_READ, req->timeout);
 	} while(1);
 
 	/* Never here */
@@ -664,7 +690,7 @@ static int linux_ssl_shutdown(struct fiber_task *ftask, void *arg)
 			}
 
 			sock->state |= SOCK_S_SSL_SCHED_SHUTDOWN;
-			FIBER_SOCKET_YIELD_ERR_RETURN(ftask, yield_reason, req, req->s, SOCK_IO_OP_SHUTDOWN);
+			FIBER_YIELD_ERR_RETURN(ftask, &sock->sock, yield_reason, req->timeout);
 		}
 	} while (1);
 
@@ -753,9 +779,8 @@ static int linux_ssl_accept(struct fiber_task *ftask, void *arg)
 	}
 
 	socket_init_accept_req(get_ssl_temp_socket(req), get_ssl_temp_req(req),
-		req->param.accept.src_addr, FIBER_WAIT4_INFINITE);
+		req->param.accept.src_addr, req->timeout);
 	FIBER_SOCKET_ACCEPT(ftask, get_ssl_temp_req(req));
-
 	if (ret != ERR_OK) {
 		socket_close(get_ssl_temp_socket(req));
 		return ret;
@@ -778,7 +803,6 @@ static int linux_ssl_accept(struct fiber_task *ftask, void *arg)
 	/*
 	 * store the new socket in socket_req and free temporary request
 	 */
-	req->s = &sock->sock;
 	req->param.accept.s = &sock->sock;
 	socket_close(get_ssl_temp_socket(req));
 	req->u.extra_pointer = NULL;
@@ -786,25 +810,30 @@ static int linux_ssl_accept(struct fiber_task *ftask, void *arg)
 	do {
 		int ssl_error;
 		unsigned int yield_reason;
+		struct linux_socket *client;
 
-		ret = SSL_accept(sock->ssl);
+		client = (struct linux_socket *)(req->param.accept.s);
+
+		ret = SSL_accept(client->ssl);
 		if (ret <= 0) {
-			ssl_error = SSL_get_error(sock->ssl, ret);
+			ssl_error = SSL_get_error(client->ssl, ret);
 			if (ssl_error == SSL_ERROR_WANT_READ) {
 				yield_reason = FIBER_YIELD_R_WAIT4_READ;
 			} else if (ssl_error == SSL_ERROR_WANT_WRITE) {
 				yield_reason = FIBER_YIELD_R_WAIT4_WRITE;
 			} else {
-				linux_ssl_close(&sock->sock);
+				linux_ssl_close(&client->sock);
+				req->param.accept.s = NULL;
 				return ERR_NOT_HANDLED;
 			}
 		} else {
 			break;
 		}
 
-		FIBER_SOCKET_YIELD(ftask, yield_reason, req, &sock->sock, SOCK_IO_OP_RX);
+		FIBER_YIELD(ftask, &client->sock, yield_reason, req->timeout);
 		if (ret != ERR_OK) {
-			linux_ssl_close(&sock->sock);
+			linux_ssl_close(req->param.accept.s);
+			req->param.accept.s = NULL;
 			return ret;
 		}
 	} while(1);
@@ -832,7 +861,7 @@ static int linux_ssl_connect(struct fiber_task *ftask, void *arg)
 		ret = connect(sock->fd, (struct sockaddr *)&req->param.conn.addr->ipaddr,
 			sizeof(struct sockaddr_in));
 		if (likely(ret < 0 && errno == EINPROGRESS)) {
-			FIBER_SOCKET_YIELD(ftask, FIBER_YIELD_R_WAIT4_WRITE, req, req->s, SOCK_IO_OP_TX);
+			FIBER_YIELD(ftask, &sock->sock, FIBER_YIELD_R_WAIT4_WRITE, req->timeout);
 			ret = linux_tcp_get_connect_result(sock, req, ret);
 			if (ret != ERR_OK) {
 				return ret;
@@ -875,7 +904,7 @@ static int linux_ssl_connect(struct fiber_task *ftask, void *arg)
 				return ERR_NOT_HANDLED;
 			}
 
-			FIBER_SOCKET_YIELD_ERR_RETURN(ftask, yield_reason, req, req->s, SOCK_IO_OP_TX);
+			FIBER_YIELD_ERR_RETURN(ftask, &sock->sock, yield_reason, req->timeout);
 		}
 	} while (1);
 
@@ -908,7 +937,7 @@ static int linux_ssl_send(struct fiber_task *ftask, void *arg)
 			} else {
 				return ERR_IO;
 			}
-			FIBER_SOCKET_YIELD_ERR_RETURN(ftask, yield_reason, req, req->s, SOCK_IO_OP_TX);
+			FIBER_YIELD_ERR_RETURN(ftask, &sock->sock, yield_reason, req->timeout);
 		} else {
 			return ret;
 		}
@@ -943,7 +972,7 @@ static int linux_ssl_recv(struct fiber_task *ftask, void *arg)
 			} else {
 				return ERR_IO;
 			}
-			FIBER_SOCKET_YIELD_ERR_RETURN(ftask, yield_reason, req, req->s, SOCK_IO_OP_RX);
+			FIBER_YIELD_ERR_RETURN(ftask, &sock->sock, yield_reason, req->timeout);
 		} else {
 			return ret;
 		}
