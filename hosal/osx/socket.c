@@ -706,9 +706,27 @@ static int osx_ssl_close(struct socket *s)
 	struct osx_socket *sock = (struct osx_socket *)s;
 	SSL *ssl = sock->ssl;
 
+	if (sock->extra_data) {
+		socket_unwrap((struct socket *)(sock->extra_data));
+	}
+
 	close(sock->fd);
 	socket_unwrap(s);
 	SSL_free(ssl);
+	return ERR_OK;
+}
+
+static int osx_ssl_create_facade(struct osx_socket *sock)
+{
+	struct socket *facade_sock;
+
+	facade_sock = socket_wrap(sock->fd, SOCK_T_SSL_ACCEPT, sizeof(struct socket_req));
+	if (!facade_sock) {
+		return ERR_NOMEM;
+	}
+	facade_sock->cls = &sys_tcp_socket;
+	sock->extra_data = facade_sock;
+
 	return ERR_OK;
 }
 
@@ -717,76 +735,52 @@ static int osx_ssl_listen(struct socket *s)
 	struct osx_socket *sock = (struct osx_socket *)s;
 	int ret;
 
+	if (!sock->extra_data) {
+		ret = osx_ssl_create_facade(sock);
+		if (ret != ERR_OK) {
+			return ret;
+		}
+	}
+
 	ret = listen(sock->fd, LISTEN_Q_MAX);
-	if (ret != 0)
+	if (ret != 0) {
+		socket_unwrap((struct socket *)(sock->extra_data));
+		sock->extra_data = NULL;
 		return ERR_AGAIN;
+	}
 
 	return ERR_OK;
 }
 
-/* temporary SSL server socket */
-static struct socket *osx_ssl_temp_open(unsigned int priv_data, void *init_data)
+static inline struct socket *get_ssl_facade_socket(struct osx_socket *ssl_svr)
 {
-	int fd;
-
-	fd = *((int *)init_data);
-	return socket_wrap(fd, SOCK_T_SSL_SERVER, priv_data);
+	return (struct socket *)(ssl_svr->extra_data);
 }
 
-static int osx_ssl_temp_close(struct socket *s)
+static inline struct socket_req *get_ssl_facade_req(struct osx_socket *ssl_svr)
 {
-	socket_unwrap(s);
-	return ERR_OK;
+	return (struct socket_req *)socket_private(get_ssl_facade_socket(ssl_svr));
 }
-
-static struct socket_class ssl_temp_socket = {
-	.domain		= SOCK_DOMAIN_SYS_INET,
-	.type		= SOCK_TYPE_STREAM,
-	.protocol	= SOCK_PROTO_SSL,
-	.flags		= 0,
-	.name		= "osx_ssl_temp_socket",
-	.socket		= osx_ssl_temp_open,
-	.close		= osx_ssl_temp_close,
-	.accept		= osx_tcp_accept,
-};
 
 /* fiber coroutine */
-static inline struct socket *get_ssl_temp_socket(struct socket_req *orig_req)
-{
-	return (struct socket *)(orig_req->u.extra_pointer);
-}
-
-static inline struct socket_req *get_ssl_temp_req(struct socket_req *orig_req)
-{
-	return (struct socket_req *)socket_private(get_ssl_temp_socket(orig_req));
-}
-
 static int osx_ssl_accept(struct fiber_task *ftask, void *arg)
 {
 	FIBER_SOCKET_BEGIN(ftask, struct osx_socket, arg);
 
-	assert(req->u.extra_pointer == NULL);
-	req->u.extra_pointer = socket_create_from_class(&ssl_temp_socket, sizeof(struct socket_req), &sock->fd);
-	if (!req->u.extra_pointer) {
-		return ERR_NOMEM;
-	}
-
-	socket_init_accept_req(get_ssl_temp_socket(req), get_ssl_temp_req(req),
+	socket_init_accept_req(get_ssl_facade_socket(sock), get_ssl_facade_req(sock),
 		req->param.accept.src_addr, req->timeout);
-	FIBER_SOCKET_ACCEPT(ftask, get_ssl_temp_req(req));
+	FIBER_SOCKET_ACCEPT(ftask, get_ssl_facade_req(sock));
 	if (ret != ERR_OK) {
-		socket_close(get_ssl_temp_socket(req));
 		return ret;
 	}
 
 	/*
 	 * from this point, @sock points to the new socket created by osx_tcp_accept()
 	 */
-	sock = (struct osx_socket *)(get_ssl_temp_req(req)->param.accept.s);
+	sock = (struct osx_socket *)(get_ssl_facade_req(sock)->param.accept.s);
 	sock->ssl = SSL_new(ssl_server_ctx);
 	if (!sock->ssl) {
 		osx_tcp_close(&sock->sock);
-		socket_close(get_ssl_temp_socket(req));
 		return ERR_NOMEM;
 	}
 	SSL_set_fd(sock->ssl, sock->fd);
@@ -797,8 +791,6 @@ static int osx_ssl_accept(struct fiber_task *ftask, void *arg)
 	 * store the new socket in socket_req and free temporary request
 	 */
 	req->param.accept.s = &sock->sock;
-	socket_close(get_ssl_temp_socket(req));
-	req->u.extra_pointer = NULL;
 
 	do {
 		int ssl_error;

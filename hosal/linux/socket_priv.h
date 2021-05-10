@@ -40,6 +40,7 @@ struct linux_socket {
 	struct epoll_fiber_info	read_info;
 	struct epoll_fiber_info	write_info;
 	uint32_t		epoll_events;
+	void			*extra_data;
 };
 
 #endif

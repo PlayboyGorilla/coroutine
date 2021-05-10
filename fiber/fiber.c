@@ -42,8 +42,6 @@ static void fiber_event_submit(struct fiber_loop *floop,
 	const struct fiber_event *fevent);
 static void fiber_event_cancel(struct fiber_loop *floop,
 	const struct fiber_event *fevent);
-static void fiber_event_notify(struct fiber_loop *floop,
-	const struct fiber_event *fevent);
 
 /*
  * task state changes - run in fiber_loop context
@@ -272,6 +270,36 @@ void fiber_cancel(struct fiber_loop *floop, fiber_task_id id)
 	}
 }
 
+static int __fiber_event_notify(struct fiber_loop *floop, fiber_task_id id,
+	void *msg_data, fiber_finish_cb finish_cb)
+{
+	struct fiber_task tmp;
+	struct fiber_task *ftask;
+	struct fiber_user_event *user_event;
+
+	tmp.id = id;
+	ftask = hash_find(floop->task_table, &tmp);
+	if (!ftask) {
+		return ERR_NOT_FOUND;
+	}
+
+	user_event = mem_logged_alloc(sizeof(struct fiber_user_event), MEM_FIBER_UEVENT);
+	if (!user_event) {
+		return ERR_NOMEM;
+	}
+
+	user_event->msg_data = msg_data;
+	user_event->finish_cb = finish_cb;
+
+	list_add_tail(&ftask->user_event, &user_event->node);
+
+	if (ftask->yield_reason == FIBER_YIELD_R_WAIT4_UEVENT) {
+		fiber_schedule(ftask, ERR_OK);
+	}
+
+	return ERR_OK;
+}
+
 int fiber_notify(struct fiber_loop *floop, fiber_task_id id, void *msg_data,
 	fiber_finish_cb finish_cb)
 {
@@ -279,16 +307,7 @@ int fiber_notify(struct fiber_loop *floop, fiber_task_id id, void *msg_data,
 		return sys_fiber_send_cmd(&floop->plat_data, FIBER_EVENT_T_USER,
 			(uint64_t)id, (uint64_t)finish_cb, msg_data);
 	} else {
-		struct fiber_event fevent;
-
-		fevent.type = FIBER_EVENT_T_USER;
-		fevent.data = (uint64_t)id;
-		fevent.data2 = (uint64_t)finish_cb;
-		memset(fevent.user_data, 0, sizeof(fevent.user_data));
-		memcpy(fevent.user_data, &msg_data, sizeof(msg_data));
-
-		fiber_event_notify(floop, &fevent);
-		return ERR_OK;
+		return __fiber_event_notify(floop, id, msg_data, finish_cb);
 	}
 }
 
@@ -707,12 +726,10 @@ static void fiber_event_notify(struct fiber_loop *floop,
 	const struct fiber_event *fevent)
 {
 	fiber_task_id id = (fiber_task_id)(fevent->data);
-	struct fiber_task tmp;
-	struct fiber_task *ftask;
-	struct fiber_user_event *user_event;
 	fiber_finish_cb finish_cb;
 	uint64_t tmp_be64;
 	void *msg_data;
+	int ret;
 
 	finish_cb = (fiber_finish_cb)(fevent->data2);
 
@@ -720,29 +737,9 @@ static void fiber_event_notify(struct fiber_loop *floop,
 	tmp_be64 = sys_betoh64(tmp_be64);
 	msg_data = (void *)tmp_be64;
 
-	tmp.id = id;
-	ftask = hash_find(floop->task_table, &tmp);
-	if (!ftask) {
-		if (finish_cb) {
-			finish_cb(msg_data, ERR_NOT_FOUND);
-		}
-		return;
-	}
-
-	user_event = mem_logged_alloc(sizeof(struct fiber_user_event), MEM_FIBER_UEVENT);
-	if (!user_event) {
-		if (finish_cb) {
-			finish_cb(msg_data, ERR_NOMEM);
-		}
-		return;
-	}
-	user_event->msg_data = msg_data;
-	user_event->finish_cb = finish_cb;
-
-	list_add_tail(&ftask->user_event, &user_event->node);
-
-	if (ftask->yield_reason == FIBER_YIELD_R_WAIT4_UEVENT) {
-		fiber_schedule(ftask, ERR_OK);
+	ret = __fiber_event_notify(floop, id, msg_data, finish_cb);
+	if (ret != ERR_OK && finish_cb) {
+		finish_cb(msg_data, ret);
 	}
 }
 

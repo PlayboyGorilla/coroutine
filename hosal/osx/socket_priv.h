@@ -25,11 +25,16 @@ struct osx_socket {
 #define SOCK_T_TCP_ACCEPT		3
 #define SOCK_T_UDP			4
 #define SOCK_T_ICMP			5
+#define SOCK_T_SSL_NONE			6
+#define SOCK_T_SSL_SERVER		7
+#define SOCK_T_SSL_CLIENT		8
+#define SOCK_T_SSL_ACCEPT		9
 	unsigned int		type;
 #define SOCK_S_TCP_CONNECTED		BIT(0)
 	unsigned int		state;
 	struct kqueue_event_info	read_info;
 	struct kqueue_event_info	write_info;
+	void			*extra_data;
 };
 
 #endif

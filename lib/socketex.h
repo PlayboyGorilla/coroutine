@@ -44,7 +44,7 @@ extern void addrex_clear_name(struct sockaddr_ex *addr);
 extern void addrex_set_port(struct sockaddr_ex *addr, be16_t port);
 extern const struct sockaddr_in * addrex_get_ip(struct sockaddr_ex *addr);
 extern const char * addrex_get_name(struct sockaddr_ex *addr, unsigned short *port);
-extern int addrex_get_port(struct sockaddr_ex *addr, be16_t *port);
+extern int addrex_get_port(const struct sockaddr_ex *addr, be16_t *port);
 extern int addrex_is_equal(struct sockaddr_ex *addr1, struct sockaddr_ex *addr2);
 extern int addrex_to_string(const struct sockaddr_ex *addr, char *out, unsigned int out_len, int with_port);
 

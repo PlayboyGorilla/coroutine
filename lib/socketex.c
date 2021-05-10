@@ -71,7 +71,7 @@ const char * addrex_get_name(struct sockaddr_ex * addr, unsigned short * port)
 }
 
 /*port returns in network order*/
-int addrex_get_port(struct sockaddr_ex * addr, be16_t *port)
+int addrex_get_port(const struct sockaddr_ex * addr, be16_t *port)
 {
 	int iret;
 
