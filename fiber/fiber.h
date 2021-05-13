@@ -74,7 +74,6 @@ struct fiber_task {
 #define FIBER_YIELD_R_WAIT4_READ	2
 #define FIBER_YIELD_R_WAIT4_WRITE	3
 #define FIBER_YIELD_R_WAIT4_UEVENT	4
-#define FIBER_YIELD_R_CHILD_FIBER	5
 	unsigned int		yield_reason;
 	struct socket		*yield_sock;
 	unsigned int		last_yield_reason;
