@@ -81,8 +81,8 @@ struct fiber_task {
 	struct sys_lock		lock;
 	struct sys_cond		cond;
 	struct list_node	hash_node;
-	struct list_node	node;
 	struct list_node	node2;
+	struct list_node	cond_node;	/* ftask is waiting on a cond */
 	struct list_head	user_event;
 	fiber_task_id		id;
 	int			last_ret;	/* last return value */
@@ -124,14 +124,14 @@ extern void fiber_timeout(struct fiber_timer *ftimer, void *data);
 			}										\
 			return ret;									\
 		} else {										\
-                        fiber_timer_del(&(_ftask)->timer);						\
+			fiber_timer_del(&(_ftask)->timer);						\
 			(_ftask)->yield_reason = FIBER_YIELD_R_NONE;					\
 			(_ftask)->yield_sock = NULL;							\
                         (_ftask)->last_ret = ERR_OK;							\
 		}											\
 	} while(0)
 
-#define FIBER_YIELD_ERR_RETURN(_ftask, _sock, _reason, _timeout_ms)						\
+#define FIBER_YIELD_ERR_RETURN(_ftask, _sock, _reason, _timeout_ms)					\
 	do {												\
 		ret = ERR_INPROGRESS;									\
 		FIBER_CONCAT(FIBER_LABEL, __LINE__):							\
@@ -250,6 +250,45 @@ extern int fiber_get_user_event(struct fiber_task *, struct fiber_user_event **u
 			(_ftask)->yield_sock = NULL;							\
 			return ret;									\
 		}											\
+	} while (0)
+
+/* fiber cond */
+struct fiber_cond {
+	struct list_head	ftask_list;	/* list of ftasks that are waiting on the cond */
+	int			is_set;
+};
+
+static inline void fiber_cond_init(struct fiber_cond *fcond)
+{
+	fcond->is_set = 0;
+	init_list_head(&fcond->ftask_list);
+}
+
+static inline int fiber_cond_is_set(const struct fiber_cond *fcond)
+{
+	return fcond->is_set;
+}
+
+extern void fiber_cond_set(struct fiber_cond *fcond);
+extern void fiber_cond_reset(struct fiber_cond *fcond);
+
+#define FIBER_COND_WAIT(_ftask, _fcond)										\
+	do {													\
+		if (!(_fcond)->is_set) {									\
+			ret = ERR_INPROGRESS;									\
+			FIBER_CONCAT(FIBER_LABEL, __LINE__):							\
+			if (ret == ERR_INPROGRESS) {								\
+				(_ftask)->labels[(_ftask)->tier] = &&FIBER_CONCAT(FIBER_LABEL, __LINE__);	\
+				(_ftask)->yield_reason = FIBER_YIELD_R_COND;					\
+				(_ftask)->yield_sock = NULL;							\
+				list_add_tail(&(_fcond)->ftask_list, &(_ftask)->cond_node);			\
+				return ret;									\
+			} else {										\
+				(_ftask)->yield_reason = FIBER_YIELD_R_NONE;					\
+				(_ftask)->yield_sock = NULL;							\
+                        	(_ftask)->last_ret = ERR_OK;							\
+			}											\
+		}												\
 	} while (0)
 
 #endif

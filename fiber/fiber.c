@@ -469,6 +469,26 @@ int fiber_get_user_event(struct fiber_task *ftask, struct fiber_user_event **uev
 	return ERR_OK;
 }
 
+/* in conjunction with FIBER_WAIT_COND */
+void fiber_cond_set(struct fiber_cond *fcond)
+{
+	struct list_node *node;
+	struct list_node *temp;
+	struct fiber_task *ftask;
+
+	fcond->is_set = 1;
+	list_for_head2tail_safe(&fcond->ftask_list, node, temp) {
+		ftask = container_of(node, struct fiber_task, cond_node);
+		fiber_schedule(ftask, ERR_OK);
+	}
+	init_list_head(&fcond->ftask_list);
+}
+
+void fiber_cond_reset(struct fiber_cond *fcond)
+{
+	fcond->is_set = 0;
+}
+
 /*
  * Called by fiber tasklets -- free a user event
  * when a fiber tasklet is done with it
