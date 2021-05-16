@@ -5,9 +5,10 @@ The project provides a means to write light-weight tasks without creating multip
 1. reducing overhead incurred by system context switch
 2. avoiding error-prone lock coding usually needed in multi-thread programming
 
-Asynchronous socket operations are provided as coroutine tasklets as well. This is to facilitate large-scale concurrent service programming.
-
-The implementation is cross-platform, with Linux and MAC OS X currently supported.
+The project includes following components:
+	1. An implementation of fiber and its primitives, including YIELD and SCHEDULE
+	2. A library of asynchronous socket I/O based on the fiber
+	3. Cross-platform support and unified programming interface for different platforms, currently including Mac OS X and Linux
 
 # Build and Run
 [shell] cd demo
@@ -24,3 +25,4 @@ Edit os.mk to make 'OS' either osx or linux, depending on the system you are wor
 # TBD
 1. A singly-linked list is needed
 2. FIBER_SOCKET_XXX() further refactoring needed
+3. Support for Windows
