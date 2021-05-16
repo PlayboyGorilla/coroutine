@@ -6,9 +6,9 @@ The project provides a means to write light-weight tasks without creating multip
 2. avoiding error-prone lock coding usually needed in multi-thread programming
 
 The project includes following components:
-	1. An implementation of fiber and its primitives, including YIELD and SCHEDULE
-	2. A library of asynchronous socket I/O based on the fiber
-	3. Cross-platform support and unified programming interface for different platforms, currently including Mac OS X and Linux
+1. An implementation of fiber and its primitives, including YIELD and SCHEDULE
+2. A library of asynchronous socket I/O based on the fiber
+3. Cross-platform support and unified programming interface for different platforms, currently including Mac OS X and Linux
 
 # Build and Run
 [shell] cd demo
