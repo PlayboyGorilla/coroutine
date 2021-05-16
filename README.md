@@ -10,6 +10,17 @@ The project includes following components:
 2. A library of asynchronous socket I/O based on the fiber
 3. Cross-platform support and unified programming interface for different platforms, currently including Mac OS X and Linux
 
+# Features
+1. Asynchronous socket
+2. Timers
+3. Task yielding and scheduling
+
+# Details
+1. Each fiber task is tied to a fiber loop(struct fiber_loop object), which essentially is a system thread that runs in a loop. Multiple ftasks can run in the same fiber loop. These tasks are able to access shared data structures and resources without the need for locking.
+2. When a task needs to wait for I/O result, sleep for a certain amount of time, or wait for other certain event to happen, it yields by calling FIBER_YIELD() or other variants. The fiber loop then takes over and choose another fiber task, if there's any, to run. The const of context switching (task A yields, fiber loop takes over, task B begins to run) is low. In the demo/test_fiber.c, 100,000 tasks are put on one fiber loop. CPU and memory consumption are both under observable level.
+3. Various socket I/O operations are encapsulated as fiber tasks and thus multiple socket I/O operations can be issued on the same fiber loop, and run virtually concurrently. One blocking I/O yields CPU to other runnable tasks and thus the whole process is efficient.
+4. On Linux, epoll is used an event monitor for socket I/O. On Mac OSX, it is kqueue. These details and differences are transparent to socket callers.
+
 # Build and Run
 [shell] cd demo
 
@@ -17,10 +28,6 @@ Edit os.mk to make 'OS' either osx or linux, depending on the system you are wor
 
 [shell] make all
 
-# Features
-1. Asynchronous socket
-2. Timers
-3. Task yielding and scheduling
 
 # TBD
 1. A singly-linked list is needed
