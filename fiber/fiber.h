@@ -81,6 +81,7 @@ struct fiber_task {
 	struct sys_lock		lock;
 	struct sys_cond		cond;
 	struct list_node	hash_node;
+	struct list_node	node;
 	struct list_node	node2;
 	struct list_node	cond_node;	/* ftask is waiting on a cond */
 	struct list_head	user_event;
