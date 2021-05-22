@@ -74,6 +74,7 @@ struct fiber_task {
 #define FIBER_YIELD_R_WAIT4_READ	2
 #define FIBER_YIELD_R_WAIT4_WRITE	3
 #define FIBER_YIELD_R_WAIT4_UEVENT	4
+#define FIBER_YIELD_R_COND		5
 	unsigned int		yield_reason;
 	struct socket		*yield_sock;
 	unsigned int		last_yield_reason;
@@ -99,8 +100,9 @@ extern struct fiber_task *fiber_alloc(unsigned int local_var_size,
 	fiber_destructor destructor);
 extern void fiber_free(struct fiber_task *ftask);
 extern void *fiber_local(struct fiber_task *ftask);
-extern void fiber_init(struct fiber_task *ftask, fiber_callback task_cbk,
+extern int fiber_init(struct fiber_task *ftask, fiber_callback task_cbk,
 	fiber_destructor destructor, void *local);
+extern void fiber_deinit(struct fiber_task *ftask);
 extern int fiber_submit(struct fiber_loop *, struct fiber_task *, fiber_task_id *id);
 extern void fiber_cancel(struct fiber_loop *, fiber_task_id id);
 typedef void (*fiber_finish_cb)(void *msg_data, int result);

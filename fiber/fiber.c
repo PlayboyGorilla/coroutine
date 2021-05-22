@@ -168,9 +168,23 @@ struct fiber_loop *fiber_loop_current(void)
 	return (struct fiber_loop *)sys_get_tls();
 }
 
-void fiber_init(struct fiber_task *ftask, fiber_callback task_cbk,
+int fiber_init(struct fiber_task *ftask, fiber_callback task_cbk,
 	fiber_destructor destructor, void *local)
 {
+	int ret;
+
+	if (!destructor) {
+		ret = sys_lock_init(&ftask->lock);
+		if (ret != ERR_OK) {
+			return ret;
+		}
+		ret = sys_cond_init(&ftask->cond, &ftask->lock);
+		if (ret != ERR_OK) {
+			sys_lock_finit(&ftask->lock);
+			return ret;
+		}
+	}
+
 	ftask->floop = NULL;
 	ftask->parent = NULL;
 	memset(ftask->labels, 0, sizeof(ftask->labels));
@@ -184,6 +198,16 @@ void fiber_init(struct fiber_task *ftask, fiber_callback task_cbk,
 	ftask->task_cbk = task_cbk;
 	ftask->destructor = destructor;
 	init_list_head(&ftask->user_event);
+
+	return ERR_OK;
+}
+
+void fiber_deinit(struct fiber_task *ftask)
+{
+	if (!ftask->destructor) {
+		sys_lock_finit(&ftask->lock);
+		sys_cond_finit(&ftask->cond);
+	}
 }
 
 struct fiber_task *fiber_alloc(unsigned int local_var_size,
@@ -195,23 +219,14 @@ struct fiber_task *fiber_alloc(unsigned int local_var_size,
 	int ret;
 
 	ftask = malloc(obj_size + local_var_size);
-	if (!ftask)
+	if (!ftask) {
 		return NULL;
+	}
 
-	fiber_init(ftask, task_cbk, destructor, ((uint8_t *)ftask) + obj_size);
-
-	if (!destructor) {
-		ret = sys_lock_init(&ftask->lock);
-		if (ret != ERR_OK) {
-			free(ftask);
-			return NULL;
-		}
-		ret = sys_cond_init(&ftask->cond, &ftask->lock);
-		if (ret != ERR_OK) {
-			sys_lock_finit(&ftask->lock);
-			free(ftask);
-			return NULL;
-		}
+	ret = fiber_init(ftask, task_cbk, destructor, ((uint8_t *)ftask) + obj_size);
+	if (ret != ERR_OK) {
+		free(ftask);
+		return NULL;
 	}
 
 	return ftask;
@@ -219,10 +234,7 @@ struct fiber_task *fiber_alloc(unsigned int local_var_size,
 
 void fiber_free(struct fiber_task *ftask)
 {
-	if (!ftask->destructor) {
-		sys_lock_finit(&ftask->lock);
-		sys_cond_finit(&ftask->cond);
-	}
+	fiber_deinit(ftask);
 	free(ftask);
 }
 

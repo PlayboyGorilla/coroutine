@@ -143,16 +143,25 @@ void sys_fiber_wait4_event(struct sys_fiber_loop *fbl, struct fiber_loop *floop,
 			event_cbk(floop, &f_event);
 		} else {
 			sock = event->data.ptr;
-			f_event.data = (uint64_t)sock;
 			if (event->events & (EPOLLIN | EPOLLRDHUP)) {
 				f_event.type = FIBER_EVENT_T_READ;
-			} else if (event->events & EPOLLOUT) {
-				f_event.type = FIBER_EVENT_T_WRITE;
-			} else {
-				f_event.type = FIBER_EVENT_T_ERROR;
-			}
+				f_event.data = (uint64_t)sock;
+				event_cbk(floop, &f_event);
 
-			event_cbk(floop, &f_event);
+				event->events &= ~(EPOLLIN | EPOLLRDHUP);
+			}
+			if (event->events & EPOLLOUT) {
+				f_event.type = FIBER_EVENT_T_WRITE;
+				f_event.data = (uint64_t)sock;
+				event_cbk(floop, &f_event);
+
+				event->events &= ~EPOLLOUT;
+			}
+			if (event->events) {
+				f_event.type = FIBER_EVENT_T_ERROR;
+				f_event.data = (uint64_t)sock;
+				event_cbk(floop, &f_event);
+			}
 		}
 	}
 }
