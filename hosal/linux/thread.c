@@ -128,6 +128,7 @@ void *sys_get_tls(void)
 int subsys_thread_init(void)
 {
 	int ret;
+	sigset_t set;
 
 	ret = pthread_key_create(&pthread_tls, NULL);
 	if (ret == 0) {
@@ -139,8 +140,23 @@ int subsys_thread_init(void)
 	} else {
 		return ERR_UNKNOWN;
 	}
+
+	sigemptyset(&set);
+	sigaddset(&set, SIGPIPE);
+	ret = pthread_sigmask(SIG_BLOCK, &set, NULL);
+	if (ret != 0) {
+		return ERR_UNKNOWN;
+	}
+
+	return ERR_OK;
 }
 
 void subsys_thread_exit(void)
 {
+	sigset_t set;
+	sigemptyset(&set);
+	sigaddset(&set, SIGPIPE);
+	pthread_sigmask(SIG_UNBLOCK, &set, NULL);
+
+	pthread_key_delete(pthread_tls);
 }
