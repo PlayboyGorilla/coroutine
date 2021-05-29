@@ -256,10 +256,6 @@ static int osx_tcp_listen(struct socket *s)
 	struct osx_socket *sock = (struct osx_socket *)s;
 	int ret;
 
-	if (!ssl_server_ctx) {
-		return ERR_NOTPERMIT;
-	}
-
 	ret = listen(sock->fd, LISTEN_Q_MAX);
 	if (ret != 0)
 		return ERR_AGAIN;
@@ -734,6 +730,10 @@ static int osx_ssl_listen(struct socket *s)
 {
 	struct osx_socket *sock = (struct osx_socket *)s;
 	int ret;
+
+	if (!ssl_server_ctx) {
+		return ERR_NOTPERMIT;
+	}
 
 	if (!sock->extra_data) {
 		ret = osx_ssl_create_facade(sock);
