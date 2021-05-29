@@ -5,15 +5,14 @@ The project provides a means to write light-weight tasks without creating multip
 1. reducing overhead incurred by system context switch
 2. avoiding error-prone lock coding usually needed in multi-thread programming
 
-The project includes following components:
-1. An implementation of fiber and its primitives, including YIELD and SCHEDULE
-2. A library of asynchronous socket I/O based on the fiber
-3. Cross-platform support and unified programming interface for different platforms, currently including Mac OS X and Linux
+The project includes following:
 
 # Features
-1. Asynchronous socket
-2. Timers
-3. Task yielding and scheduling
+1. An implementation of fiber and its primitives, including YIELD and SCHEDULE
+2. A library of asynchronous socket I/O based on the fiber
+3. Timing-wheel-based timers
+4. Cross-platform support and unified programming interface for different platforms, currently including Mac OS X and Linux
+
 
 # Details
 1. Each fiber task is tied to a fiber loop(struct fiber_loop object), which essentially is a system thread that runs in a loop. Multiple ftasks can run in the same fiber loop. These tasks are able to access shared data structures and resources without the need for locking.
