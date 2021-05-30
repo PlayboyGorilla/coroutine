@@ -130,17 +130,6 @@ int subsys_thread_init(void)
 	int ret;
 	sigset_t set;
 
-	ret = pthread_key_create(&pthread_tls, NULL);
-	if (ret == 0) {
-		return ERR_OK;
-	} else if (ret == EAGAIN) {
-		return ERR_AGAIN;
-	} else if (ret == ENOMEM) {
-		return ERR_NOMEM;
-	} else {
-		return ERR_UNKNOWN;
-	}
-
 	sigemptyset(&set);
 	sigaddset(&set, SIGPIPE);
 	ret = pthread_sigmask(SIG_BLOCK, &set, NULL);
@@ -148,15 +137,35 @@ int subsys_thread_init(void)
 		return ERR_UNKNOWN;
 	}
 
+	ret = pthread_key_create(&pthread_tls, NULL);
+	if (ret == 0) {
+		return ERR_OK;
+	} else if (ret == EAGAIN) {
+		ret = ERR_AGAIN;
+		goto err_out;
+	} else if (ret == ENOMEM) {
+		ret = ERR_NOMEM;
+		goto err_out;
+	} else {
+		ret = ERR_UNKNOWN;
+		goto err_out;
+	}
+
 	return ERR_OK;
+err_out:
+	sigemptyset(&set);
+	sigaddset(&set, SIGPIPE);
+	pthread_sigmask(SIG_UNBLOCK, &set, NULL);
+	return ret;
 }
 
 void subsys_thread_exit(void)
 {
 	sigset_t set;
+
+	pthread_key_delete(pthread_tls);
+
 	sigemptyset(&set);
 	sigaddset(&set, SIGPIPE);
 	pthread_sigmask(SIG_UNBLOCK, &set, NULL);
-
-	pthread_key_delete(pthread_tls);
 }
