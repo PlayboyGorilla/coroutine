@@ -9,6 +9,9 @@
 #include "lib/socketex.h"
 #include "lib/misc.h"
 
+#include <openssl/x509.h>
+#include <openssl/x509v3.h>
+
 struct socket_req;
 /*
  * describe on-going I/O operation
@@ -94,6 +97,7 @@ union socket_req_param {
 		const struct sockaddr_ex *addr;
 #define SOCK_REQP_F_SSL		BIT(0)
 		unsigned int flags;
+		X509	*svr_cert;	/* server certificate to verify against */
 	}conn;
 	struct {
 		struct socket *s;		/* output -- returned by tcp_accept */

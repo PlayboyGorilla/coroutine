@@ -834,6 +834,39 @@ static int linux_ssl_accept(struct fiber_task *ftask, void *arg)
 	FIBER_SOCKET_END(ftask, ERR_OK);
 }
 
+static int linux_ssl_verify_cert(struct osx_socket *sock, struct socket_req *req)
+{
+	X509 *cert;
+	EVP_PKEY *evp_pkey;
+	EVP_PKEY *evp_pkey_local;
+
+	if (!req->param.conn.svr_cert) {
+		return ERR_OK;
+	}
+
+	assert(sock->ssl != NULL);
+	cert = SSL_get_peer_certificate(sock->ssl);
+	if (!cert) {
+		return ERR_AUTH_FAIL;
+	}
+
+	evp_pkey = X509_get0_pubkey(cert);
+	if (!evp_pkey) {
+		return ERR_AUTH_FAIL;
+	}
+
+	evp_pkey_local = X509_get0_pubkey(req->param.conn.svr_cert);
+	if (!evp_pkey_local) {
+		return ERR_AUTH_FAIL;
+	}
+
+	if (EVP_PKEY_cmp(evp_pkey, evp_pkey_local) == 1) {
+		return ERR_OK;
+	}
+
+	return ERR_AUTH_FAIL;
+}
+
 /* fiber coroutine */
 static int linux_ssl_connect(struct fiber_task *ftask, void *arg)
 {
@@ -882,7 +915,7 @@ static int linux_ssl_connect(struct fiber_task *ftask, void *arg)
 		ret = SSL_connect(sock->ssl);
 		if (unlikely(ret == 1)) {
 			sock->state |= SOCK_S_SSL_CONNECTED;
-			return ERR_OK;
+			return linux_ssl_verify_cert(sock, req);
 		} else {
 			int ssl_error;
 			unsigned int yield_reason;

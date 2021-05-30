@@ -301,6 +301,7 @@ void socket_init_connect_req(struct socket *s, struct socket_req *req,
 	req->wait_type = SOCKIO_WAIT_NORMAL;
 	req->param.conn.addr = addr;
 	req->param.conn.flags = (is_ssl ? SOCK_REQP_F_SSL : 0);
+	req->param.conn.svr_cert = NULL;
 	memset(&req->u, 0, sizeof(req->u));
 }
 
