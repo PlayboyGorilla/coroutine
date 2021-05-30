@@ -207,9 +207,12 @@ int main(void)
 	int ret;
 	struct fiber_loop *floop;
 	unsigned int i;
+	struct sys_init_param iparam;
 
 	/* init */
-	ret = sys_init();
+	iparam.keyfile = NULL;
+	iparam.certfile = NULL;
+	ret = sys_init(&iparam);
 	assert(ret == ERR_OK);
 
 	floop = fiber_loop_create();

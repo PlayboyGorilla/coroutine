@@ -77,6 +77,7 @@ int main(int argc, char *argv[])
 	fiber_task_id fid_unused;
 	unsigned int i;
 	be32_t ip;
+	struct sys_init_param iparam;
 
 	if (argc != 2) {
 		fprintf(stdout, "Usage: port_scan <IP_to_scan>\n");
@@ -85,7 +86,9 @@ int main(int argc, char *argv[])
 	ip = (be32_t)inet_addr(argv[1]);
 
 	/* init */
-	ret = sys_init();
+	iparam.keyfile = NULL;
+	iparam.certfile = NULL;
+	ret = sys_init(&iparam);
 	assert(ret == ERR_OK);
 
 	floop = fiber_loop_create();
