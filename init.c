@@ -5,8 +5,9 @@
 #include "hosal/thread.h"
 #include "hosal/socket.h"
 #include "lib/errno.h"
+#include "init.h"
 
-int sys_init(void)
+int sys_init(const struct sys_init_param *param)
 {
 	int ret;
 
@@ -17,7 +18,7 @@ int sys_init(void)
 
 	subsys_timer_init();
 
-	ret = subsys_sys_socket_init();
+	ret = subsys_sys_socket_init(param->keyfile, param->certfile);
 	if (ret != ERR_OK)
 		return ret;
 

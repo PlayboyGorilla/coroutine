@@ -986,10 +986,14 @@ struct socket_class sys_ssl_socket = {
 };
 
 /* subsystem init/exit */
-static SSL_CTX *subsys_new_server_ctx(void)
+static SSL_CTX *subsys_new_server_ctx(const char *keyfile, const char *certfile)
 {
 	const SSL_METHOD *method;
 	SSL_CTX *ctx;
+
+	if (!keyfile || !certfile) {
+		return NULL;
+	}
 
 	method = SSLv23_server_method();
 
@@ -1001,12 +1005,12 @@ static SSL_CTX *subsys_new_server_ctx(void)
 	(void)SSL_CTX_set_ecdh_auto(ctx, 1);
 
 	/* Set the key and cert */
-	if (SSL_CTX_use_certificate_file(ctx, "cert.pem", SSL_FILETYPE_PEM) <= 0) {
+	if (SSL_CTX_use_certificate_file(ctx, certfile, SSL_FILETYPE_PEM) <= 0) {
 		SSL_CTX_free(ctx);
 		return NULL;
 	}
 
-	if (SSL_CTX_use_PrivateKey_file(ctx, "key.pem", SSL_FILETYPE_PEM) <= 0) {
+	if (SSL_CTX_use_PrivateKey_file(ctx, keyfile, SSL_FILETYPE_PEM) <= 0) {
 		SSL_CTX_free(ctx);
 		return NULL;
 	}
@@ -1014,14 +1018,14 @@ static SSL_CTX *subsys_new_server_ctx(void)
 	return ctx;
 }
 
-int subsys_sys_socket_init(void)
+int subsys_sys_socket_init(const char *keyfile, const char *certfile)
 {
 	ssl_client_ctx = SSL_CTX_new(TLS_client_method());
 	if (!ssl_client_ctx) {
 		return ERR_NOMEM;
 	}
 
-	ssl_server_ctx = subsys_new_server_ctx();
+	ssl_server_ctx = subsys_new_server_ctx(keyfile, certfile);
 	if (!ssl_server_ctx) {
 		fprintf(stderr, "WARNING: TLS server socket will not be allowed\n");
 	}
