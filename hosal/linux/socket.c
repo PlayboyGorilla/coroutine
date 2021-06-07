@@ -834,7 +834,7 @@ static int linux_ssl_accept(struct fiber_task *ftask, void *arg)
 	FIBER_SOCKET_END(ftask, ERR_OK);
 }
 
-static int linux_ssl_verify_cert(struct osx_socket *sock, struct socket_req *req)
+static int linux_ssl_verify_cert(struct linux_socket *sock, struct socket_req *req)
 {
 	X509 *cert;
 	EVP_PKEY *evp_pkey;
