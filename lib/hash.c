@@ -111,3 +111,23 @@ void *hash_find(struct hash *htable, const void *obj_temp)
 
 	return NULL;
 }
+
+void hash_iterate(struct hash *htable, void (*callback)(void *obj, void *data),
+	void *data)
+{
+	unsigned int i;
+	struct list_head *head;
+	struct list_node *node;
+	struct list_node *tmp;
+	void *obj;
+
+	for (i = 0; i < htable->entry_nr; i++) {
+		head = &htable->hash_tbl[i];
+
+		list_for_head2tail_safe(head, node, tmp) {
+			obj = hash_node_to_obj(htable, node);
+
+			callback(obj, data);
+		}
+	}
+}

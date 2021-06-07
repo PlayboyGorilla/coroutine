@@ -11,5 +11,7 @@ extern void hash_insert_fast(struct hash *, void *obj, unsigned int hash_val);
 extern void hash_del(struct hash *, void *obj);
 extern void hash_del_fast(struct hash *, void *obj, unsigned int hash_val);
 extern void *hash_find(struct hash *, const void *obj_temp);
+extern void hash_iterate(struct hash *, void (*callback)(void *obj, void *data),
+	void *data);
 
 #endif
