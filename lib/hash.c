@@ -1,10 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <assert.h>
 
 #include "list.h"
 #include "hash.h"
 
+#if 0
 struct hash {
 	unsigned int		entry_nr;
 	unsigned int		node_offset;
@@ -12,6 +14,7 @@ struct hash {
 	int			(*cb_equal)(const void *obj1, const void *obj2);
 	struct list_head	hash_tbl[0];
 };
+#endif
 
 static inline struct list_node *hash_obj_to_node(struct hash *htable, void *obj)
 {
