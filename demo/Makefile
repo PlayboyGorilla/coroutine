@@ -23,10 +23,28 @@ test_fiber:$(objs) test_fiber.o
 port_scan:$(objs) port_scan.o
 	$(CC) $(CFLAGS) -o port_scan $(objs) port_scan.o $(LDFLAGS)
 
+test_dlist:$(objs) test_dlist.o
+	$(CC) $(CFLAGS) -o test_dlist $(objs) test_dlist.o $(LDFLAGS)
+
+test_slist:$(objs) test_slist.o
+	$(CC) $(CFLAGS) -o test_slist $(objs) test_slist.o $(LDFLAGS)
+
+test_hash:$(objs) test_hash.o
+	$(CC) $(CFLAGS) -o test_hash $(objs) test_hash.o $(LDFLAGS)
+
 test_fiber.o:test_fiber.c
 	$(CC) $(INCDIR) $(CFLAGS) -c $< -o $@
 
 port_scan.o:port_scan.c
+	$(CC) $(INCDIR) $(CFLAGS) -c $< -o $@
+
+test_dlist.o:test_dlist.c
+	$(CC) $(INCDIR) $(CFLAGS) -c $< -o $@
+
+test_slist.o:test_slist.c
+	$(CC) $(INCDIR) $(CFLAGS) -c $< -o $@
+
+test_hash.o:test_hash.c
 	$(CC) $(INCDIR) $(CFLAGS) -c $< -o $@
 
 $(BASEDIR)/log/stats_api.h:$(BASEDIR)/log/stats.h $(BASEDIR)/log/allocator.h

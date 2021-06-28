@@ -1,6 +1,7 @@
 SUBDIR:=lib
 
 tmp_objs:=list.o	\
+	slist.o		\
 	skiplist.o	\
 	socketex.o	\
 	hash.o		\
