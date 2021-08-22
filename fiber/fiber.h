@@ -60,7 +60,6 @@ typedef void	(*fiber_destructor)(struct fiber_task *);
 #define FIBER_TASK_MAX_TIER	8
 struct fiber_task {
 	struct fiber_loop	*floop;
-	struct fiber_task	*parent;
 	void			*labels[FIBER_TASK_MAX_TIER];
 	uint16_t		tier;	/* current tier */
 #define FIBER_TASK_S_INIT	0

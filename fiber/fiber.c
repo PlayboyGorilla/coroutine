@@ -186,7 +186,6 @@ int fiber_init(struct fiber_task *ftask, fiber_callback task_cbk,
 	}
 
 	ftask->floop = NULL;
-	ftask->parent = NULL;
 	memset(ftask->labels, 0, sizeof(ftask->labels));
 	ftask->state = FIBER_TASK_S_INIT;
 	ftask->yield_reason = FIBER_YIELD_R_NONE;
@@ -602,16 +601,14 @@ static void fiber_task_suspend(struct fiber_task *ftask)
 
 static void fiber_task_resume(struct fiber_task *ftask, int last_ret)
 {
-	struct fiber_task *parent = ftask->parent;
 	int ret;
 
+	ftask->state = FIBER_TASK_S_RUNNING;
 	ftask->tier = 0;
 	ftask->last_ret = last_ret;
 	ret = ftask->task_cbk(ftask, NULL);
 	if (ret != ERR_INPROGRESS) {
 		fiber_task_done(ftask, ret);
-		if (parent)
-			fiber_task_resume(parent, ret);
 	} else {
 		fiber_task_suspend(ftask);
 	}
@@ -838,7 +835,6 @@ void fiber_may_resume_tasks(struct fiber_loop *floop)
 		list_for_head2tail_safe(&ftask_head, node, temp) {
 			ftask = container_of(node, struct fiber_task, node2);
 
-			ftask->state = FIBER_TASK_S_RUNNING;
 			fiber_task_resume(ftask, ftask->last_ret);
 		}
 		init_list_head(&ftask_head);
