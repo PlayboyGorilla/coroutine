@@ -46,11 +46,11 @@ static void test1(void)
 	int vals[] = {1, 2, 3, 4, 5};
 	struct list_head head;
 	struct test_list_node *node;
-	struct test_list_node *node1;
-	struct test_list_node *node2;
-	struct test_list_node *node3;
-	struct test_list_node *node4;
-	struct test_list_node *node5;
+	struct test_list_node *node1 = NULL;
+	struct test_list_node *node2 = NULL;
+	struct test_list_node *node3 = NULL;
+	struct test_list_node *node4 = NULL;
+	struct test_list_node *node5 = NULL;
 	unsigned int i;
 
 	init_list_head(&head);

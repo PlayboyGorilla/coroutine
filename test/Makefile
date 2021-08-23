@@ -17,16 +17,22 @@ include $(BASEDIR)/log/build.mk
 include $(BASEDIR)/hosal/$(OS)/build.mk
 include $(BASEDIR)/fiber/build.mk
 
-test_fiber:$(objs) test_fiber.o
-	$(CC) $(CFLAGS) -o test_fiber $(objs) test_fiber.o $(LDFLAGS)
+test_dlist:$(objs) test_dlist.o
+	$(CC) $(CFLAGS) -o test_dlist $(objs) test_dlist.o $(LDFLAGS)
 
-port_scan:$(objs) port_scan.o
-	$(CC) $(CFLAGS) -o port_scan $(objs) port_scan.o $(LDFLAGS)
+test_slist:$(objs) test_slist.o
+	$(CC) $(CFLAGS) -o test_slist $(objs) test_slist.o $(LDFLAGS)
 
-test_fiber.o:test_fiber.c
+test_hash:$(objs) test_hash.o
+	$(CC) $(CFLAGS) -o test_hash $(objs) test_hash.o $(LDFLAGS)
+
+test_dlist.o:test_dlist.c
 	$(CC) $(INCDIR) $(CFLAGS) -c $< -o $@
 
-port_scan.o:port_scan.c
+test_slist.o:test_slist.c
+	$(CC) $(INCDIR) $(CFLAGS) -c $< -o $@
+
+test_hash.o:test_hash.c
 	$(CC) $(INCDIR) $(CFLAGS) -c $< -o $@
 
 $(BASEDIR)/log/stats_api.h:$(BASEDIR)/log/stats.h $(BASEDIR)/log/allocator.h
@@ -35,13 +41,13 @@ $(BASEDIR)/log/stats_api.h:$(BASEDIR)/log/stats.h $(BASEDIR)/log/allocator.h
 $(objs): $(BUILDDIR)/%.o : $(BASEDIR)/%.c
 	$(CC) $(INCDIR) $(CFLAGS) -c $< -o $@
 
-all: test_fiber port_scan
+all: test_dlist test_slist test_hash
 
 clean:
 ifeq ($(OS),linux)
-	-rm *.o test_fiber port_scan 2>/dev/null
+	-rm *.o test_dlist test_slist test_hash 2>/dev/null
 	cd $(BUILDDIR);find -name '*.o'|xargs rm
 else
-	-rm *.o test_fiber port_scan 2>/dev/null
+	-rm *.o test_dlist test_slist test_hash 2>/dev/null
 	cd $(BUILDDIR);find ./ -iname '*.o'|xargs rm
 endif
