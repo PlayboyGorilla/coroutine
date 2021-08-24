@@ -64,13 +64,17 @@ void sys_get_timestamp(void *timestamp)
 
 unsigned long sys_get_timestamp_specific(int type)
 {
-        uint64_t now;
+	uint64_t ticks;
+	unsigned long ret;
 
-	now = mach_absolute_time();
-        if (type == SYS_JIFFY_T_IN_SEC)
-                return now / 1000000000;
-        else
-                return now / 1000000;
+	ticks = mach_absolute_time();
+
+	/* to ms */
+	ret = (ticks * time_base_info.numer) / (time_base_info.denom * 1000000);
+	if (type == SYS_JIFFY_T_IN_SEC) {
+		ret = ret / 1000;
+	}
+	return ret;
 }
 
 uint64_t sys_time_elapsed(const void *timestamp1, const void *timestamp2)
