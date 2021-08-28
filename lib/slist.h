@@ -32,11 +32,6 @@ extern void slist_add_tail(struct slist_head *head, struct slist_node *node);
 extern void slist_del_node(struct slist_head *head, struct slist_node *prev, struct slist_node *node);
 extern void slist_insert_node(struct slist_head *head, struct slist_node *prev,struct slist_node *new_node);
 
-static inline int is_list_empty(const struct slist_head *head)
-{
-        return (!head->head);
-}
-
 static inline struct slist_node *slist_first(struct slist_head *head)
 {
 	return head->head;
