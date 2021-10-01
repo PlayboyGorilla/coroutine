@@ -11,7 +11,7 @@ The project includes following:
 1. An implementation of fiber and its primitives, including YIELD and SCHEDULE
 2. A library of asynchronous socket I/O based on the fiber
 3. Timing-wheel-based timers
-4. Cross-platform support and unified programming interface for different platforms, currently including Mac OS X and Linux
+4. Cross-platform support and unified programming interface for different platforms, currently including Mac OS X, Linux, iOS and Android
 
 
 # Details
