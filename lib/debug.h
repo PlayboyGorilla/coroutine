@@ -1,14 +1,12 @@
 #ifndef __LIB_DEBUG_H__
 #define __LIB_DEBUG_H__
 
-#include <stdint.h>
-
 #ifdef __DEBUG__
-extern void dbg_hex_dump(const uint8_t *data, unsigned int len);
+#define DEBUG_PRINTF(...)	printf(__VA_ARGS__)
 #else
-static inline void dbg_hex_dump(const uint8_t *data, unsigned int len)
-{
-}
+#define DEBUG_PRINTF(...)	do{}while(0)
 #endif
+
+#define LOG(...)	printf(__VA_ARGS__)
 
 #endif

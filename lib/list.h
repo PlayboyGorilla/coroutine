@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <stdint.h>
 
+#include "hosal/type.h"
+
 /*It should be noted that this list is not protected by any locks*/
 struct list_node {
 	struct list_node *prev;
@@ -59,7 +61,7 @@ static inline struct list_node *list_prev_node(struct list_head *head, struct li
 	return node->prev;
 }
 
-static inline void *list_first_entry(struct list_head *head, unsigned long offset)
+static inline void *list_first_entry(struct list_head *head, uint_pointer offset)
 {
 	struct list_node *node = list_first_node(head);
 
@@ -70,7 +72,7 @@ static inline void *list_first_entry(struct list_head *head, unsigned long offse
 	return (((uint8_t *)node) - offset);
 }
 
-static inline void *list_last_entry(struct list_head *head, unsigned long offset)
+static inline void *list_last_entry(struct list_head *head, uint_pointer offset)
 {
 	struct list_node *node = list_last_node(head);
 
@@ -81,7 +83,7 @@ static inline void *list_last_entry(struct list_head *head, unsigned long offset
 	return (((uint8_t *)node) - offset);
 }
 
-static inline void *list_next_entry(struct list_head *head, struct list_node *n, unsigned long offset)
+static inline void *list_next_entry(struct list_head *head, struct list_node *n, uint_pointer offset)
 {
 	struct list_node *node = list_next_node(head, n);
 
@@ -92,7 +94,7 @@ static inline void *list_next_entry(struct list_head *head, struct list_node *n,
 	return (((uint8_t *)node) - offset);
 }
 
-static inline void *list_prev_entry(struct list_head *head, struct list_node *n, unsigned long offset)
+static inline void *list_prev_entry(struct list_head *head, struct list_node *n, uint_pointer offset)
 {
 	struct list_node *node = list_prev_node(head, n);
 
@@ -126,7 +128,7 @@ static inline const struct list_node *list_prev_node_const(const struct list_hea
 	return node->prev;
 }
 
-static inline const void *list_first_entry_const(const struct list_head *head, unsigned long offset)
+static inline const void *list_first_entry_const(const struct list_head *head, uint_pointer offset)
 {
 	const struct list_node *node = list_first_node_const(head);
 
@@ -137,7 +139,7 @@ static inline const void *list_first_entry_const(const struct list_head *head, u
 	return (((const uint8_t *)node) - offset);
 }
 
-static inline const void *list_last_entry_const(const struct list_head *head, unsigned long offset)
+static inline const void *list_last_entry_const(const struct list_head *head, uint_pointer offset)
 {
 	const struct list_node *node = list_last_node_const(head);
 
@@ -149,7 +151,7 @@ static inline const void *list_last_entry_const(const struct list_head *head, un
 }
 
 static inline const void *list_next_entry_const(const struct list_head *head,
-		const struct list_node *n, unsigned long offset)
+		const struct list_node *n, uint_pointer offset)
 {
 	const struct list_node *node = list_next_node_const(head, n);
 
@@ -161,7 +163,7 @@ static inline const void *list_next_entry_const(const struct list_head *head,
 }
 
 static inline const void *list_prev_entry_const(const struct list_head *head,
-		const struct list_node *n, unsigned long offset)
+		const struct list_node *n, uint_pointer offset)
 {
 	const struct list_node *node = list_prev_node_const(head, n);
 

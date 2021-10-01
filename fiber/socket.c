@@ -69,19 +69,14 @@ struct socket *socket_create(int domain, int type, int protocol, unsigned int pr
 	return NULL;
 }
 
-static inline void socket_close_check_sio(struct socket *s, struct socket_io *sio)
-{
-	assert(sio->in_progress == 0);
-}
-
 /*
  * NOTE: owner of the socket must ensure no more socket calls 
  */
 int socket_close(struct socket *sock)
 {
-	socket_close_check_sio(sock, &sock->io[SOCK_IO_OP_TX]);
-	socket_close_check_sio(sock, &sock->io[SOCK_IO_OP_RX]);
-	socket_close_check_sio(sock, &sock->io[SOCK_IO_OP_SHUTDOWN]);
+	assert(!socket_is_in_progress(sock, SOCK_IO_OP_TX));
+	assert(!socket_is_in_progress(sock, SOCK_IO_OP_RX));
+	assert(!socket_is_in_progress(sock, SOCK_IO_OP_SHUTDOWN));
 
 	return sock->cls->close(sock);
 }

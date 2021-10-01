@@ -20,32 +20,43 @@
 
 #include "socket_priv.h"
 
-#define FIBER_FIFO_PREFIX	"/tmp/coroutine_fb_%lu_%lu"
+static const char *FIBER_FIFO_PREFIX;
+void subsys_fiber_init(const char *fifo_base)
+{
+	FIBER_FIFO_PREFIX = fifo_base;
+}
+
 int sys_fiber_thread_init(struct sys_fiber_loop *fbl)
 {
 	int ret;
 	struct epoll_event event;
 
-	snprintf(fbl->fifo_name, sizeof(fbl->fifo_name), FIBER_FIFO_PREFIX,
-		sys_get_timestamp_specific(SYS_JIFFY_T_IN_MS), (unsigned long)gettid());
+	snprintf(fbl->fifo_name, sizeof(fbl->fifo_name), "%s_%lu_%lu_%lu", FIBER_FIFO_PREFIX,
+		sys_get_timestamp_specific(SYS_JIFFY_T_IN_MS), (unsigned long)getpid(),
+		(unsigned long)rand());
+
 	ret = mkfifo(fbl->fifo_name, 0666);
-	if (ret < 0 && errno != EEXIST)
+	if (ret < 0 && errno != EEXIST) {
 		return ERR_IO;
+	}
 
 	fbl->fifo_rd = open(fbl->fifo_name, O_NONBLOCK | O_RDONLY);
-	if (fbl->fifo_rd < 0)
+	if (fbl->fifo_rd < 0) {
 		goto unlink_out;
+	}
 
 	/* create epoll */
 	fbl->epoll_fd = epoll_create(EPOLL_MAX_EVENTS);
-	if (fbl->epoll_fd < 0)
+	if (fbl->epoll_fd < 0) {
 		goto close_out;
+	}
 
 	event.events = (EPOLLERR | EPOLLHUP | EPOLLRDHUP | EPOLLIN);
 	event.data.ptr = fbl;
 	ret = epoll_ctl(fbl->epoll_fd, EPOLL_CTL_ADD, fbl->fifo_rd, &event);
-	if (ret < 0)
+	if (ret < 0) {
 		goto close_ep_out;
+	}
 
 	return ERR_OK;
 close_ep_out:

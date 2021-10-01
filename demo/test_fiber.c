@@ -212,6 +212,7 @@ int main(void)
 	/* init */
 	iparam.keyfile = NULL;
 	iparam.certfile = NULL;
+	iparam.fifo_base = "/tmp/nonsense_fb";
 	ret = sys_init(&iparam);
 	assert(ret == ERR_OK);
 

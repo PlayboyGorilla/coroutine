@@ -4,6 +4,7 @@
 struct sys_init_param {
 	const char	*keyfile;
 	const char	*certfile;
+	const char	*fifo_base;
 };
 
 extern int sys_init(const struct sys_init_param *param);

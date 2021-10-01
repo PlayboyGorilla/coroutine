@@ -1,9 +1,9 @@
 #ifdef __linux__
-#include "hosal/linux/thread.h"
+#include "hosal/linux/type.h"
 #elif defined WIN32
-#include "hosal/win/thread.h"
+#include "hosal/win/type.h"
 #elif defined __APPLE__
-#include "hosal/osx/thread.h"
+#include "hosal/osx/type.h"
 #else
 #error "Non-supported OS model"
 #endif

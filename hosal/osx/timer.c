@@ -15,6 +15,18 @@
 
 static mach_timebase_info_data_t time_base_info;
 
+/*
+* Must be called in the main thread, before everything else
+*/
+void subsys_timer_init(void)
+{
+	mach_timebase_info(&time_base_info); /* Determines the time scale */
+}
+
+void subsys_timer_exit(void)
+{
+}
+
 /* misc */
 int sys_time_get(struct sys_time *out)
 {
@@ -91,12 +103,4 @@ uint64_t sys_time_elapsed(const void *timestamp1, const void *timestamp2)
        elapsed_nano = (stamp2 - stamp1) * time_base_info.numer / time_base_info.denom;
 
        return (elapsed_nano / 1000000);
-}
-
-void subsys_timer_init(void)
-{
-}
-
-void subsys_timer_exit(void)
-{
 }

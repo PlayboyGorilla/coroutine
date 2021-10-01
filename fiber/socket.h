@@ -183,7 +183,9 @@ extern int socket_shutdown(struct fiber_task *, void *arg);
 	(void)sock;							\
 	assert((_ftask)->tier < FIBER_TASK_MAX_TIER);			\
 	if ((_ftask)->labels[(_ftask)->tier] != NULL) {			\
+		__attribute__((unused)) void *__unused_goto_p = &&unused_label;			\
 		void *__goto_p = (_ftask)->labels[(_ftask)->tier];	\
+unused_label:		\
 		(ftask)->labels[(_ftask)->tier] = NULL;			\
 		goto *__goto_p;						\
 	}

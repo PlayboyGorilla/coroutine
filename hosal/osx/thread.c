@@ -22,7 +22,7 @@ int sys_lock_init(struct sys_lock *lock)
 }
 
 /* Thread */
-void sys_thread_init (struct sys_thread *thread, void *func, void *arg)
+void sys_thread_init(struct sys_thread *thread, void *func, void *arg)
 {
 	thread->thread_func = (thread_func_type)func;
 	thread->thread_arg = arg;
@@ -116,7 +116,7 @@ int sys_set_tls(void *data)
 		return ERR_NOMEM;
 	} else {
 		return ERR_UNKNOWN;
-	}   
+	}
 }
 
 void *sys_get_tls(void)

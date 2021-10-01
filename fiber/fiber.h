@@ -17,6 +17,7 @@ struct fiber_loop;
 extern struct fiber_loop *fiber_loop_create(void);
 extern void fiber_loop_destroy(struct fiber_loop *floop);
 extern struct fiber_loop *fiber_loop_current(void);
+extern struct sys_fiber_loop *fiber_loop_platform(struct fiber_loop *floop);
 
 static inline int fiber_loop_is_current(struct fiber_loop *floop)
 {

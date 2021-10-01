@@ -8,7 +8,8 @@
 #include "hosal/atomic.h"
 
 enum mem_block_index {
-	MEM_FIBER_UEVENT = 0,
+ 	MEM_FIBER		= 0,
+	MEM_FIBER_UEVENT,
 	MEM_FIBER_FEVENT,
 	MEM_BLOCK_MAX,
 };

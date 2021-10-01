@@ -19,30 +19,41 @@
 
 #include "socket_priv.h"
 
-#define FIBER_FIFO_PREFIX	"/tmp/coroutine_fb_%lu_%lu"
+static const char *FIBER_FIFO_PREFIX;
+void subsys_fiber_init(const char *fifo_base)
+{
+	FIBER_FIFO_PREFIX = fifo_base;
+}
+
 int sys_fiber_thread_init(struct sys_fiber_loop *fbl)
 {
 	struct kevent event;
 	int ret;
 
-	snprintf(fbl->fifo_name, sizeof(fbl->fifo_name), FIBER_FIFO_PREFIX,
-		sys_get_timestamp_specific(SYS_JIFFY_T_IN_MS), (unsigned long)getpid());	/* FIXME */
+	snprintf(fbl->fifo_name, sizeof(fbl->fifo_name), "%s_%lu_%lu_%lu", FIBER_FIFO_PREFIX,
+		sys_get_timestamp_specific(SYS_JIFFY_T_IN_MS), (unsigned long)getpid(),
+		(unsigned long)rand());
+
 	ret = mkfifo(fbl->fifo_name, 0666);
-	if (ret < 0 && errno != EEXIST)
+	if (ret < 0 && errno != EEXIST) {
 		return ERR_IO;
+	}
 
 	fbl->fifo_rd = open(fbl->fifo_name, O_NONBLOCK | O_RDONLY);
-	if (fbl->fifo_rd < 0)
+	if (fbl->fifo_rd < 0) {
 		goto unlink_out;
+	}
 
 	fbl->kq_fd = kqueue();
-	if (fbl->kq_fd < 0)
+	if (fbl->kq_fd < 0) {
 		goto close_out;
+	}
 
 	EV_SET(&event, fbl->fifo_rd, EVFILT_READ, EV_ADD | EV_ENABLE, 0, 0, fbl);
 	ret = kevent(fbl->kq_fd, &event, 1, NULL, 0, NULL);
-	if (ret < 0)
+	if (ret < 0) {
 		goto close_kq_out;
+	}
 
 	return ERR_OK;
 close_kq_out:
@@ -129,6 +140,7 @@ void sys_fiber_wait4_event(struct sys_fiber_loop *fbl, struct fiber_loop *floop,
 		event_cbk(floop, &f_event);
 		return;
 	} else if (unlikely(ret < 0)) {
+		DEBUG_PRINTF("kevent() returns %d, errno=%d\n", ret, errno);
 		return;
 	}
 

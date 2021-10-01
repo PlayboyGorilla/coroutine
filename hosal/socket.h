@@ -7,7 +7,7 @@ extern void subsys_sys_socket_exit(void);
 #ifdef __linux__
 #include "hosal/linux/socket.h"
 #elif defined WIN32
-#include "hosal/windows/socket.h"
+#include "hosal/win/socket.h"
 #elif defined __APPLE__
 #include "hosal/osx/socket.h"
 #else

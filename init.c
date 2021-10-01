@@ -2,6 +2,7 @@
 #include <stdlib.h>
 
 #include "hosal/timer.h"
+#include "hosal/fiber.h"
 #include "hosal/thread.h"
 #include "hosal/socket.h"
 #include "lib/errno.h"
@@ -13,15 +14,17 @@ int sys_init(const struct sys_init_param *param)
 
 	/* hosal */
 	ret = subsys_thread_init();
-	if (ret != ERR_OK)
+	if (ret != ERR_OK) {
 		return ret;
+	}
 
 	subsys_timer_init();
+	subsys_fiber_init(param->fifo_base);
 
 	ret = subsys_sys_socket_init(param->keyfile, param->certfile);
-	if (ret != ERR_OK)
+	if (ret != ERR_OK) {
 		return ret;
-
+	}
 	return ERR_OK;
 }
 

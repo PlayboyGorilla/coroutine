@@ -94,7 +94,12 @@ void addrex_set_port(struct sockaddr_ex * addr, be16_t port)
 	addr->naddr.port = sys_betoh16(port);
 }
 
-int addrex_is_equal(struct sockaddr_ex * addr1, struct sockaddr_ex * addr2)
+void addrex_copy(struct sockaddr_ex *dst, const struct sockaddr_ex *src)
+{
+	memcpy(dst, src, sizeof(*dst));
+}
+
+int addrex_is_equal(const struct sockaddr_ex * addr1, const struct sockaddr_ex * addr2)
 {
 	if(addr1->flags != addr2->flags)
 		return 0;
@@ -125,7 +130,7 @@ int addrex_to_string(const struct sockaddr_ex * addr, char * out, unsigned int o
 			return snprintf(out, out_len, "%s", addr->naddr.name);
 	} else if (addr->flags & ADDREX_F_IP) {
 		if (with_port)
-			return snprintf(out, out_len, "%s:%u", inet_ntoa(addr->ipaddr.sin_addr), ntohs(addr->ipaddr.sin_port));
+			return snprintf(out, out_len, "%s:%u", inet_ntoa(addr->ipaddr.sin_addr), sys_betoh16(addr->ipaddr.sin_port));
 		else
 			return snprintf(out, out_len, "%s", inet_ntoa(addr->ipaddr.sin_addr));
 	}

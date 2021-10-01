@@ -34,10 +34,12 @@ struct sys_fiber_event {
         uint8_t		user_data[15];
 }__attribute__ ((packed));
 
+extern void subsys_fiber_init(const char *fifo_base);
+
 #ifdef __linux__
 #include "hosal/linux/fiber.h"
 #elif defined WIN32
-#include "hosal/windows/fiber.h"
+#include "hosal/win/fiber.h"
 #elif defined __APPLE__
 #include "hosal/osx/fiber.h"
 #else

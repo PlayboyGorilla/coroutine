@@ -41,7 +41,7 @@ extern uint64_t sys_time_elapsed(const void *timestamp1, const void *timestamp2)
 #ifdef __linux__
 #include "hosal/linux/timer.h"
 #elif defined WIN32
-#include "hosal/windows/timer.h"
+#include "hosal/win/timer.h"
 #elif defined __APPLE__
 #include "hosal/osx/timer.h"
 #else

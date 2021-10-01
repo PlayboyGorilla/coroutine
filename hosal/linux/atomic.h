@@ -1,7 +1,7 @@
 #ifndef __HOSAL_ATOMIC_LINUX__
 #define __HOSAL_ATOMIC_LINUX__
 
-typedef int atomic_t;
+typedef unsigned int atomic_t;
 
 static inline void sys_atomic_inc(atomic_t *atomic)
 {

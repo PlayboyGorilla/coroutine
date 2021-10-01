@@ -168,6 +168,11 @@ struct fiber_loop *fiber_loop_current(void)
 	return (struct fiber_loop *)sys_get_tls();
 }
 
+struct sys_fiber_loop *fiber_loop_platform(struct fiber_loop *floop)
+{
+	return &floop->plat_data;
+}
+
 int fiber_init(struct fiber_task *ftask, fiber_callback task_cbk,
 	fiber_destructor destructor, void *local)
 {
@@ -217,14 +222,14 @@ struct fiber_task *fiber_alloc(unsigned int local_var_size,
 	unsigned int obj_size = ALIGN_UP(sizeof(struct fiber_task), 8);
 	int ret;
 
-	ftask = malloc(obj_size + local_var_size);
+	ftask = mem_logged_alloc(obj_size + local_var_size, MEM_FIBER);
 	if (!ftask) {
 		return NULL;
 	}
 
 	ret = fiber_init(ftask, task_cbk, destructor, ((uint8_t *)ftask) + obj_size);
 	if (ret != ERR_OK) {
-		free(ftask);
+		mem_logged_free(ftask, MEM_FIBER);
 		return NULL;
 	}
 
@@ -234,7 +239,7 @@ struct fiber_task *fiber_alloc(unsigned int local_var_size,
 void fiber_free(struct fiber_task *ftask)
 {
 	fiber_deinit(ftask);
-	free(ftask);
+	mem_logged_free(ftask, MEM_FIBER);
 }
 
 void *fiber_local(struct fiber_task *ftask)
@@ -641,11 +646,14 @@ static void fiber_event_cancel(struct fiber_loop *floop,
 
 	tmp.id = id;
 	ftask = hash_find(floop->task_table, &tmp);
-	if (!ftask)
+	if (!ftask) {
 		return;
-
-	//TODO
-	(void)ftask;
+	}
+	if (ftask->state == FIBER_TASK_S_SUSPEND) {
+		fiber_schedule(ftask, ERR_ABORTED);
+	} else if (ftask->state == FIBER_TASK_S_SCHED) {
+		ftask->last_ret = ERR_ABORTED;
+	}
 }
 
 static void fiber_event_exit(struct fiber_loop *floop,
@@ -834,7 +842,6 @@ void fiber_may_resume_tasks(struct fiber_loop *floop)
 
 		list_for_head2tail_safe(&ftask_head, node, temp) {
 			ftask = container_of(node, struct fiber_task, node2);
-
 			fiber_task_resume(ftask, ftask->last_ret);
 		}
 		init_list_head(&ftask_head);
@@ -860,8 +867,9 @@ static void *fiber_loop_main(void *arg)
 	sys_cond_signal(&floop->cond);
 	sys_unlocking(&floop->lock);
 
-	if (ret != ERR_OK)
+	if (ret != ERR_OK) {
 		return NULL;
+	}
 
 	while (1) {
 		current = fiber_check_timers(floop);

@@ -22,7 +22,7 @@ int sys_lock_init(struct sys_lock *lock)
 }
 
 /* Thread */
-void sys_thread_init (struct sys_thread *thread, void *func, void *arg)
+void sys_thread_init(struct sys_thread *thread, void *func, void *arg)
 {
 	thread->thread_func = (thread_func_type)func;
 	thread->thread_arg = arg;
@@ -43,7 +43,7 @@ int sys_thread_create(struct sys_thread *thread)
 	return ret;
 }
 
-__may_block__ void sys_thread_wait (struct sys_thread *thread)
+__may_block__ void sys_thread_wait(struct sys_thread *thread)
 {
 	pthread_join(thread->thread_id, NULL);
 }
@@ -75,7 +75,7 @@ int sys_thread_kill(struct sys_thread *thread)
 }
 
 /* Event(cond) */
-int sys_cond_init (struct sys_cond *cond, struct sys_lock *lock)
+int sys_cond_init(struct sys_cond *cond, struct sys_lock *lock)
 {
 	int ret;
 	ret = pthread_cond_init(&cond->posix_cond, NULL);
@@ -89,7 +89,7 @@ int sys_cond_init (struct sys_cond *cond, struct sys_lock *lock)
 	return 0;
 }
 
-void sys_cond_finit (struct sys_cond *cond)
+void sys_cond_finit(struct sys_cond *cond)
 {
 	int ret;
 
@@ -99,7 +99,7 @@ void sys_cond_finit (struct sys_cond *cond)
 	cond->lock = NULL;
 }
 
-void sys_cond_wait (struct sys_cond *cond)
+void sys_cond_wait(struct sys_cond *cond)
 {
 	pthread_cond_wait(&cond->posix_cond, &cond->lock->posix_mutex);
 }
@@ -150,7 +150,6 @@ int subsys_thread_init(void)
 		ret = ERR_UNKNOWN;
 		goto err_out;
 	}
-
 	return ERR_OK;
 err_out:
 	sigemptyset(&set);
@@ -164,7 +163,6 @@ void subsys_thread_exit(void)
 	sigset_t set;
 
 	pthread_key_delete(pthread_tls);
-
 	sigemptyset(&set);
 	sigaddset(&set, SIGPIPE);
 	pthread_sigmask(SIG_UNBLOCK, &set, NULL);
