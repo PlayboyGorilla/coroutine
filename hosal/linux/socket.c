@@ -75,27 +75,39 @@ static int common_socket_shutdown(struct linux_socket *sock, const struct socket
 {
 	int how = req->param.shutdown.how;
 
-	if (how == SOCK_SHUTDOWN_RD)
+	if (how == SOCK_SHUTDOWN_RD) {
 		how = SHUT_RD;
-	else if (how == SOCK_SHUTDOWN_WR)
+	} else if (how == SOCK_SHUTDOWN_WR) {
 		how = SHUT_WR;
-	else
+	} else {
 		how = SHUT_RDWR;
+	}
 
 	shutdown(sock->fd, how);
-
 	return ERR_OK;
 }
 
-static int common_socket_setopt(struct socket *s, int level, int optname, const void *optval, socklen_t optlen)
+static int common_socket_setopt(struct socket *s, int option, int val)
 {
 	struct linux_socket *sock = (struct linux_socket *)s;
+	int level;
+	int optname;
 	int ret;
 
-	ret = setsockopt(sock->fd, level, optname, optval, optlen);
-	if (ret < 0)
-		return sys_error_map(errno);
+	if (option == SOCK_OPT_REUSE_ADDR) {
+		level = SOL_SOCKET;
+		optname = SO_REUSEADDR;
+	} else if (option == SOCK_OPT_KEEPALIVE) {
+		level = SOL_SOCKET;
+		optname = SO_KEEPALIVE;
+	} else {
+		return ERR_NOTSUPPORTED;
+	}
 
+	ret = setsockopt(sock->fd, level, optname, &val, sizeof(val));
+	if (ret < 0) {
+		return sys_error_map(errno);
+	}
 	return ERR_OK;
 }
 
@@ -103,11 +115,11 @@ static int socket_set_nonblock(int sock_fd)
 {
 	int flags;
 	flags = fcntl(sock_fd, F_GETFL, 0);
-	if (flags < 0)
+	if (flags < 0) {
 		return ERR_NOT_HANDLED;
-	if (fcntl(sock_fd, F_SETFL, flags | O_NONBLOCK) < 0)
+	} if (fcntl(sock_fd, F_SETFL, flags | O_NONBLOCK) < 0) {
 		return ERR_NOT_HANDLED;
-	
+	}
 	return ERR_OK;
 }
 
@@ -1023,7 +1035,7 @@ struct socket_class sys_ssl_socket = {
 	.shutdown	= linux_ssl_shutdown,
 	.send		= linux_ssl_send,
 	.recv		= linux_ssl_recv,
-	.setsockopt	= NULL,
+	.setsockopt	= common_socket_setopt,
 };
 
 /* subsystem init/exit */

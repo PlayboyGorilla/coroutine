@@ -162,15 +162,27 @@ static int common_socket_shutdown(struct osx_socket *sock, const struct socket_r
 	return ERR_OK;
 }
 
-static int common_socket_setopt(struct socket *s, int level, int optname, const void *optval, socklen_t optlen)
+static int common_socket_setopt(struct socket *s, int option, int val)
 {
 	struct osx_socket *sock = (struct osx_socket *)s;
-	int ret;
+	int level;
+	int optname;
+	int ret; 
 
-	ret = setsockopt(sock->fd, level, optname, optval, optlen);
-	if (ret < 0)
+	if (option == SOCK_OPT_REUSE_ADDR) {
+		level = SOL_SOCKET;
+		optname = SO_REUSEADDR;
+	} else if (option == SOCK_OPT_KEEPALIVE) {
+		level = SOL_SOCKET;
+		optname = SO_KEEPALIVE;
+	} else {
+		return ERR_NOTSUPPORTED;
+	}
+
+	ret = setsockopt(sock->fd, level, optname, &val, sizeof(val));
+	if (ret < 0) { 
 		return sys_error_map(errno);
-
+	}
 	return ERR_OK;
 }
 

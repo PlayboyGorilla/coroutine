@@ -83,26 +83,26 @@ int socket_close(struct socket *sock)
 
 int socket_bind(struct socket *sock, const struct sockaddr_ex *addr)
 {
-	if (!sock->cls->bind)
+	if (!sock->cls->bind) {
 		return ERR_NOTSUPPORTED;
-
+	}
 	return sock->cls->bind(sock, addr);
 }
 
 int socket_listen(struct socket *sock)
 {
-	if (!sock->cls->listen)
+	if (!sock->cls->listen) {
 		return ERR_NOTSUPPORTED;
-
+	}
 	return sock->cls->listen(sock);
 }
 
-int socket_setopt(struct socket *sock, int level, int optname, const void *optval, socklen_t optlen)
+int socket_setopt(struct socket *sock, int option, int val)
 {
-	if (!sock->cls->setsockopt)
+	if (!sock->cls->setsockopt) {
 		return ERR_NOTSUPPORTED;
-
-	return sock->cls->setsockopt(sock, level, optname, optval, optlen);
+	}
+	return sock->cls->setsockopt(sock, option, val);
 }
 
 void socket_cancel(struct socket_req *req)

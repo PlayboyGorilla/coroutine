@@ -82,7 +82,7 @@ struct socket_class {
 	fiber_callback	send;
 	fiber_callback	recv;
 
-	int (*setsockopt)(struct socket *, int level, int optname, const void *optval, socklen_t optlen);
+	int (*setsockopt)(struct socket *, int option, int val);
 
 	/* internal -- never touch directly */
 	struct list_node	node;
@@ -153,7 +153,9 @@ extern int socket_close(struct socket *);
 extern int socket_bind(struct socket *, const struct sockaddr_ex *);
 extern int socket_listen(struct socket *);
 
-extern int socket_setopt(struct socket *, int level, int optname, const void *optval, socklen_t optlen);
+#define SOCK_OPT_REUSE_ADDR	0
+#define SOCK_OPT_KEEPALIVE	1
+extern int socket_setopt(struct socket *, int option, int val);
 extern void socket_cancel(struct socket_req *);
 
 static inline void *socket_private(struct socket *s)
