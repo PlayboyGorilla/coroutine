@@ -61,7 +61,7 @@ static inline void sys_unlocking(struct sys_lock *lock)
 /* Thread */
 extern void sys_thread_init (struct sys_thread *, void *func, void *arg);
 extern int sys_thread_create(struct sys_thread *);
-extern __may_block__ void sys_thread_wait (struct sys_thread *);
+extern void sys_thread_wait (struct sys_thread *);
 static inline void sys_thread_destroy(struct sys_thread *thread)
 {
 }

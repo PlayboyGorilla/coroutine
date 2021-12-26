@@ -43,7 +43,7 @@ int sys_thread_create(struct sys_thread *thread)
 	return ret;
 }
 
-__may_block__ void sys_thread_wait (struct sys_thread *thread)
+void sys_thread_wait (struct sys_thread *thread)
 {
 	pthread_join(thread->thread_id, NULL);
 }
