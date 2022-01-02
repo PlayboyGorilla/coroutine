@@ -26,6 +26,26 @@ struct list_head {
 
 #define LIST_HEAD_INIT(lhead) { NULL, NULL }
 
+static inline struct list_node *list_entry2node(void *entry, uint_pointer offset)
+{
+	return (struct list_node *)(((uint8_t *)entry) + offset);
+}
+
+static inline void *list_node2entry(struct list_node *node, uint_pointer offset)
+{
+	return (((uint8_t *)node) - offset);
+}
+
+static inline const struct list_node *list_entry2node_const(const void *entry, uint_pointer offset)
+{
+	return (const struct list_node *)(((const uint8_t *)entry) + offset);
+}
+
+static inline const void *list_node2entry_const(const struct list_node *node, uint_pointer offset)
+{
+	return (((const uint8_t *)node) - offset);
+}
+
 static inline void init_list_head(struct list_head *head)
 {
 	head->head = NULL;
@@ -68,8 +88,7 @@ static inline void *list_first_entry(struct list_head *head, uint_pointer offset
 	if (!node) {
 		return NULL;
 	}
-
-	return (((uint8_t *)node) - offset);
+	return list_node2entry(node, offset);
 }
 
 static inline void *list_last_entry(struct list_head *head, uint_pointer offset)
@@ -79,8 +98,7 @@ static inline void *list_last_entry(struct list_head *head, uint_pointer offset)
 	if (!node) {
 		return NULL;
 	}
-
-	return (((uint8_t *)node) - offset);
+	return list_node2entry(node, offset);
 }
 
 static inline void *list_next_entry(struct list_head *head, struct list_node *n, uint_pointer offset)
@@ -90,8 +108,7 @@ static inline void *list_next_entry(struct list_head *head, struct list_node *n,
 	if (!node) {
 		return NULL;
 	}
-
-	return (((uint8_t *)node) - offset);
+	return list_node2entry(node, offset);
 }
 
 static inline void *list_prev_entry(struct list_head *head, struct list_node *n, uint_pointer offset)
@@ -101,8 +118,7 @@ static inline void *list_prev_entry(struct list_head *head, struct list_node *n,
 	if (!node) {
 		return NULL;
 	}
-
-	return (((uint8_t *)node) - offset);
+	return list_node2entry(node, offset);
 }
 
 /* 'const' version of list_XXX getters */
@@ -135,8 +151,7 @@ static inline const void *list_first_entry_const(const struct list_head *head, u
 	if (!node) {
 		return NULL;
 	}
-
-	return (((const uint8_t *)node) - offset);
+	return list_node2entry_const(node, offset);
 }
 
 static inline const void *list_last_entry_const(const struct list_head *head, uint_pointer offset)
@@ -146,8 +161,7 @@ static inline const void *list_last_entry_const(const struct list_head *head, ui
 	if (!node) {
 		return NULL;
 	}
-
-	return (((const uint8_t *)node) - offset);
+	return list_node2entry_const(node, offset);
 }
 
 static inline const void *list_next_entry_const(const struct list_head *head,
@@ -158,8 +172,7 @@ static inline const void *list_next_entry_const(const struct list_head *head,
 	if (!node) {
 		return NULL;
 	}
-
-	return (((const uint8_t *)node) - offset);
+	return list_node2entry_const(node, offset);
 }
 
 static inline const void *list_prev_entry_const(const struct list_head *head,
@@ -170,8 +183,7 @@ static inline const void *list_prev_entry_const(const struct list_head *head,
 	if (!node) {
 		return NULL;
 	}
-
-	return (((const uint8_t *)node) - offset);
+	return list_node2entry_const(node, offset);
 }
 
 #define list_for_head2tail(head, node)	\
