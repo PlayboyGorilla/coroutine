@@ -30,4 +30,3 @@ Edit os.mk to make 'OS' either osx or linux, depending on the system you are wor
 
 # TBD
 1. FIBER_SOCKET_XXX() further refactoring needed
-2. Support for Windows
