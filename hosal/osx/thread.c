@@ -6,7 +6,7 @@
 
 #include "thread.h"
 
-#include "lib/misc.h"
+#include "lib/debug.h"
 #include "lib/errno.h"
 
 static pthread_key_t pthread_tls;
@@ -33,32 +33,19 @@ int sys_thread_create(struct sys_thread *thread)
 	int ret;
 	
 	ret = pthread_create(&thread->thread_id, NULL, thread->thread_func, thread->thread_arg);
-	if (ret == 0)
+	if (ret == 0) {
 		ret = ERR_OK;
-	else if (ret == EAGAIN)
+	} else if (ret == EAGAIN) {
 		ret = ERR_AGAIN;
-	else
+	} else {
 		ret = ERR_UNKNOWN;
-
+	}
 	return ret;
 }
 
-void sys_thread_wait (struct sys_thread *thread)
+void sys_thread_wait(struct sys_thread *thread)
 {
 	pthread_join(thread->thread_id, NULL);
-}
-
-int sys_thread_detach(struct sys_thread *thread)
-{
-	int ret;
-
-	ret = pthread_detach(thread->thread_id);
-	if (ret == 0)
-		ret = ERR_OK;
-	else
-		ret = ERR_INVAL;
-
-	return ret;
 }
 
 int sys_thread_kill(struct sys_thread *thread)
@@ -66,34 +53,36 @@ int sys_thread_kill(struct sys_thread *thread)
 	int ret;
 
 	ret = pthread_kill(thread->thread_id, SIGQUIT);
-	if (ret == 0)
+	if (ret == 0) {
 		ret = ERR_OK;
-	else
+	} else {
 		ret = ERR_INVAL;
-
+	}
 	return ret;
 }
 
 /* Event(cond) */
-int sys_cond_init (struct sys_cond *cond, struct sys_lock *lock)
+int sys_cond_init(struct sys_cond *cond, struct sys_lock *lock)
 {
 	int ret;
 	ret = pthread_cond_init(&cond->posix_cond, NULL);
 	
-	if (ret == EAGAIN || ret == ENOMEM)
+	if (ret == EAGAIN || ret == ENOMEM) {
 		return ERR_NOMEM;
-	else if (ret != 0)
+	} else if (ret != 0) {
 		return ERR_INVAL;
+	}
 
 	cond->lock = lock;
 	return 0;
 }
 
-void sys_cond_finit (struct sys_cond *cond)
+void sys_cond_finit(struct sys_cond *cond)
 {
 	int ret;
 
 	ret = pthread_cond_destroy(&cond->posix_cond); /* FIXME: */
+	(void)ret;
 	BUG_ON(ret);
 
 	cond->lock = NULL;

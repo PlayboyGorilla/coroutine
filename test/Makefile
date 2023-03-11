@@ -1,13 +1,13 @@
 include os.mk
 BASEDIR:=..
 BUILDDIR:=$(BASEDIR)/build
-CFLAGS:=-Wall -O2 -m64
+CFLAGS:=-Wall -O2
 #CFLAGS:=-g -D__DEBUG__ -Wall -Werror
 INCDIR:=-I$(BASEDIR)/
 ifeq ($(OS),linux)
-LDFLAGS:=-lpthread -ldl -lrt -lpthread -lssl -lcrypto
+LDFLAGS:=-lpthread -ldl -lrt
 else
-LDFLAGS:=-lpthread -ldl -lpthread -lssl -lcrypto
+LDFLAGS:=-ldl -lpthread
 endif
 CC:=gcc
 

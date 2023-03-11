@@ -35,12 +35,12 @@ void addrex_clear_ip(struct sockaddr_ex *addr)
 /*port -- host order*/
 int addrex_set_name(struct sockaddr_ex *addr, const char *name, uint16_t port)
 {
-	if(strlen(name) >= MAX_DOMAIN_LEN)
+	if (strlen(name) >= MAX_DOMAIN_LEN) {
 		return ERR_OVERFLOW;
+	}
 
 	strncpy(addr->naddr.name, name, MAX_DOMAIN_LEN);
 	addr->naddr.port = port;
-
 	addr->flags |= ADDREX_F_NAME;
 
 	return ERR_OK;
@@ -53,12 +53,13 @@ void addrex_clear_name(struct sockaddr_ex * addr)
 	addr->flags &= ~ADDREX_F_NAME;
 }
 
-const struct sockaddr_in * addrex_get_ip(struct sockaddr_ex * addr)
+int addrex_get_ip(const struct sockaddr_ex *addr, be32_t *ip)
 {
-	if((addr->flags & ADDREX_F_IP) == 0)
-		return NULL;
-
-	return &addr->ipaddr;
+	if (!(addr->flags & ADDREX_F_IP)) {
+		return ERR_NOT_FOUND;
+	}
+	*ip = addr->ipaddr.sin_addr.s_addr;
+	return ERR_OK;
 }
 
 const char * addrex_get_name(struct sockaddr_ex * addr, unsigned short * port)

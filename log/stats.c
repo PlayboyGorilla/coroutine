@@ -1,3 +1,3 @@
-#include "stats.h"
+#include "log/stats.h"
 
-struct log_stats	runtime_stats;
+atomic_t runtime_stats[STATS_MAX];

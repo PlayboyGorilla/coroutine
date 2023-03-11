@@ -18,7 +18,7 @@
 #include "hosal/timer.h"
 #include "hosal/socket.h"
 
-#define TEST_TASKLET_NR		100000
+#define TEST_TASKLET_NR		1000
 
 /* test fiber 1 */
 struct test_fiber_task {
@@ -77,6 +77,9 @@ static void fiber_msleep_test(struct fiber_loop *floop, int a, unsigned int b)
 	strcpy(ftask_local->str, "hello");
 
 	ret = fiber_submit(floop, ftask, &tid);
+	if (ret != ERR_OK) {
+		printf("%s: i=%d, ret=%d\n", __func__, a, ret);
+	}
 	assert(ret == ERR_OK);
 }
 
@@ -89,8 +92,8 @@ struct test_fiber_sock {
 	struct socket_req	req;
 };
 
-#define SERVER_IP	"36.110.185.30"
-#define SERVER_PORT	993
+#define SERVER_IP	"9.9.9.9"
+#define SERVER_PORT	443
 
 static int test_fiber_sock_func(struct fiber_task *ftask)
 {
@@ -212,7 +215,7 @@ int main(void)
 	/* init */
 	iparam.keyfile = NULL;
 	iparam.certfile = NULL;
-	iparam.fifo_base = "/tmp/nonsense_fb";
+	iparam.fifo_base = "/tmp/coroutine_fb";
 	ret = sys_init(&iparam);
 	assert(ret == ERR_OK);
 
@@ -227,8 +230,9 @@ int main(void)
 	(void)fiber_uevent_test;
 	(void)i;
 
-	for (i = 0; i < TEST_TASKLET_NR; i++)
+	for (i = 0; i < TEST_TASKLET_NR; i++) {
 		fiber_msleep_test(floop, i, 0x12345678);
+	}
 
 	//fiber_sock_test(floop, 0);
 	//fiber_msleep_test(floop, 10, 0x12345678);

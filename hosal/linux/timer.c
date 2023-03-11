@@ -27,11 +27,12 @@ static int clk_common_detect(struct sys_uptime_obtainer *ob)
 	int ret;
 
 	ret = clock_getres(ob->clkid, &spec);
-	if (ret < 0)
+	if (ret < 0) {
 		return 0;
-
-	if (spec.tv_sec != 0 || spec.tv_nsec > 1000000)
+	}
+	if (spec.tv_sec != 0 || spec.tv_nsec > 1000000) {
 		return 0;
+	}
 
 	return 1;
 }
@@ -45,6 +46,7 @@ static void clk_common_get(struct sys_uptime_obtainer *ob, void *timestamp)
 	assert(ret == 0);
 }
 
+/* return in usec */
 static uint64_t clk_common_elapsed(const void *timestamp1, const void *timestamp2)
 {
 	const struct timespec *spec1 = timestamp1;
@@ -66,7 +68,7 @@ static uint64_t clk_common_elapsed(const void *timestamp1, const void *timestamp
                 nsec_diff = spec2->tv_nsec - spec1->tv_nsec;
         }
 
-        return (sec_diff * 1000 + nsec_diff / 1000000);
+        return (sec_diff * 1000000 + nsec_diff / 1000);
 }
 
 static struct sys_uptime_obtainer sys_boottime = {
@@ -113,6 +115,7 @@ static void gettimeofday_get(struct sys_uptime_obtainer *ob, void *timestamp)
 	gettimeofday(val, NULL);
 }
 
+/* return in usec */
 static uint64_t gettimeofday_elapsed(const void *timestamp1, const void *timestamp2)
 {
 	const struct timeval *val1 = timestamp1;
@@ -134,7 +137,7 @@ static uint64_t gettimeofday_elapsed(const void *timestamp1, const void *timesta
 		usec_diff = val2->tv_usec - val1->tv_usec;
 	}
 
-	return (sec_diff * 1000 + usec_diff / 1000);
+	return (sec_diff * 1000000 + usec_diff);
 }
 
 static struct sys_uptime_obtainer sys_gettimeofday = {
@@ -196,8 +199,9 @@ int sys_time_get(struct sys_time *out)
 	gettimeofday(&tv, NULL);
 
 	ret = localtime_r(&tv.tv_sec, &timenow);
-	if (unlikely(!ret))
+	if (unlikely(!ret)) {
 		return ERR_UNKNOWN;
+	}
 
 	out->day = timenow.tm_mday;
 	out->month = timenow.tm_mon + 1;
@@ -206,10 +210,11 @@ int sys_time_get(struct sys_time *out)
 	out->min = timenow.tm_min;
 	out->sec = timenow.tm_sec;
 	out->msec = tv.tv_usec / 1000;
-	if (timenow.tm_zone)
+	if (timenow.tm_zone) {
 		strncpy(out->time_zone, timenow.tm_zone, sizeof(out->time_zone));
-	else
+	} else {
 		memset(out->time_zone, 0, sizeof(out->time_zone));
+	}
 	out->utc_hour_offset = timenow.tm_gmtoff / 3600;
 	out->utc_min_offset = (timenow.tm_gmtoff % 3600) / 60;
 
@@ -240,10 +245,12 @@ unsigned long sys_get_timestamp_specific(int type)
 	sys_get_timestamp(&curr_time);
 	ret = uptime_obtainer->elapsed(&zero_time, &curr_time);
 
-	if (type == SYS_JIFFY_T_IN_SEC)
-		return ret / 1000;
-	else
-		return ret;
+	if (type == SYS_JIFFY_T_IN_MS) {
+		ret = ret / 1000;
+	} else if (type == SYS_JIFFY_T_IN_SEC) {
+		ret = ret / 1000000;
+	}
+	return ret;
 }
 
 uint64_t sys_time_elapsed(const void *timestamp1, const void *timestamp2)

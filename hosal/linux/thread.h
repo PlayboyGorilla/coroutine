@@ -59,9 +59,9 @@ static inline void sys_unlocking(struct sys_lock *lock)
 /*TODO: trylock */
 
 /* Thread */
-extern void sys_thread_init (struct sys_thread *, void *func, void *arg);
+extern void sys_thread_init(struct sys_thread *, void *func, void *arg);
 extern int sys_thread_create(struct sys_thread *);
-extern void sys_thread_wait (struct sys_thread *);
+extern void sys_thread_wait(struct sys_thread *);
 static inline void sys_thread_destroy(struct sys_thread *thread)
 {
 }
@@ -75,13 +75,12 @@ static inline sys_thread_t sys_thread_id() {
 	return pthread_self();
 }
 
-extern int sys_thread_detach(struct sys_thread *);
 extern int sys_thread_kill(struct sys_thread *);
 
 /* Event */
-extern int sys_cond_init (struct sys_cond *, struct sys_lock *);
-extern void sys_cond_finit (struct sys_cond *);
-extern void sys_cond_wait (struct sys_cond *);
+extern int sys_cond_init(struct sys_cond *, struct sys_lock *);
+extern void sys_cond_finit(struct sys_cond *);
+extern void sys_cond_wait(struct sys_cond *);
 static inline void sys_cond_signal(struct sys_cond *cond)
 {
 	pthread_cond_signal(&cond->posix_cond);

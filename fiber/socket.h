@@ -9,24 +9,28 @@
 #include "lib/socketex.h"
 #include "lib/misc.h"
 
-#include <openssl/x509.h>
-#include <openssl/x509v3.h>
-
 struct socket_req;
 /*
  * describe on-going I/O operation
  */
 struct socket_io {
-	int			in_progress;
+	uint8_t			in_progress;
 };
 
+#define SOCK_PENDING_FTASK_MAX		2
 struct socket_class;
+struct fiber_task;
 struct socket {
 	struct socket_class	*cls;
-#define SOCK_IO_OP_TX		0
-#define SOCK_IO_OP_RX		1
-#define SOCK_IO_OP_SHUTDOWN	2
-#define SOCK_IO_OP_MAX		3
+	struct fiber_task	*read_ftask[SOCK_PENDING_FTASK_MAX];
+	struct fiber_task	*write_ftask[SOCK_PENDING_FTASK_MAX];
+	uint8_t			read_mon_on;
+	uint8_t			write_mon_on;
+#define SOCK_IO_OP_TX			0
+#define SOCK_IO_OP_RX			1
+#define SOCK_IO_OP_SHUTDOWN_READ	2
+#define SOCK_IO_OP_SHUTDOWN_WRITE	3
+#define SOCK_IO_OP_MAX			4
 	struct socket_io	io[SOCK_IO_OP_MAX];
 	void			*priv_data;
 	unsigned int		priv_len;
@@ -39,6 +43,10 @@ static inline int socket_is_in_progress(const struct socket *sock, unsigned int 
 
 #define SOCK_DOMAIN_SYS_INET	1
 #define SOCK_DOMAIN_SYS_INET6	2
+#define SOCK_DOMAIN_FFIP_INET	3
+#define SOCK_DOMAIN_FFIP_INET6	4
+#define SOCK_DOMAIN_TUNNEL	5
+#define SOCK_DOMAIN_VPROXY	6
 
 #define SOCK_TYPE_STREAM	1 
 #define SOCK_TYPE_DGRAM		2
@@ -50,10 +58,6 @@ static inline int socket_is_in_progress(const struct socket *sock, unsigned int 
 #define SOCK_PROTO_SSL		4
 #define SOCK_PROTO_RAW		5
 
-#define SOCK_SHUTDOWN_RD	BIT(0)
-#define SOCK_SHUTDOWN_WR	BIT(1)
-#define SOCK_SHUTDOWN_RDWR	(SOCK_SHUTDOWN_RD | SOCK_SHUTDOWN_WR)
-
 struct fiber_task;
 struct socket_req;
 struct socket_class {
@@ -62,12 +66,7 @@ struct socket_class {
 	int protocol;
 #define SOCKCLS_F_REMOTE_DNS		BIT(0)		/* capable of remote DNS */
 #define SOCKCLS_F_CONNECT		BIT(1)		/* connection oriented */
-#define SOCKCLS_F_CONNECT_NOWAIT	BIT(2)
-#define SOCKCLS_F_ACCEPT_NOWAIT		BIT(3)
-#define SOCKCLS_F_SEND_NOWAIT		BIT(4)
-#define SOCKCLS_F_RECV_NOWAIT		BIT(5)
 	unsigned int flags;
-
 	const char *name;
 
 	struct socket* (*socket)(unsigned int priv_data, void *init_data);
@@ -78,7 +77,8 @@ struct socket_class {
 
 	fiber_callback	accept;
 	fiber_callback	connect;
-	fiber_callback	shutdown;
+	fiber_callback	shutdown_read;
+	fiber_callback	shutdown_write;
 	fiber_callback	send;
 	fiber_callback	recv;
 
@@ -97,26 +97,22 @@ union socket_req_param {
 		const struct sockaddr_ex *addr;
 #define SOCK_REQP_F_SSL		BIT(0)
 		unsigned int flags;
-		X509	*svr_cert;	/* server certificate to verify against */
-	}conn;
+	} conn;
 	struct {
 		struct socket *s;		/* output -- returned by tcp_accept */
 		struct sockaddr_ex *src_addr;	/* output -- address that initiate the TCP connection */
-	}accept;
+	} accept;
 	struct {
 		struct sockaddr_ex *src_addr;	/* output -- source address, used by UDP */
 		socklen_t	src_addr_len;	/* output -- source address length*/
 		uint8_t *buf;			/* input -- associated user buffer */
 		unsigned int len;		/* input -- associated user buffer len */
-	}recv;
+	} recv;
 	struct {
 		const struct sockaddr_ex *dest_addr;	/* input -- UDP */
 		const uint8_t *buf;			/* input -- associated user buffer */
 		unsigned int len;			/* input -- associated user buffer len */
-	}send;
-	struct {
-		int	how;
-	}shutdown;
+	} send;
 };
 
 struct fiber_task;
@@ -126,8 +122,9 @@ struct socket_req {
 #define SOCKIO_T_ACCEPT		1
 #define SOCKIO_T_RECV		2
 #define SOCKIO_T_SEND		3
-#define SOCKIO_T_SHUTDOWN	4
-#define SOCKIO_T_MAX		5
+#define SOCKIO_T_SHUTDOWN_READ	4
+#define SOCKIO_T_SHUTDOWN_WRITE	5
+#define SOCKIO_T_MAX		6
 	uint16_t io_type;
 #define SOCKIO_WAIT_NORMAL      0
 #define SOCKIO_WAIT_ALL		1
@@ -167,14 +164,16 @@ extern int socket_accept(struct fiber_task *, void *arg);
 extern int socket_connect(struct fiber_task *, void *arg);
 extern int socket_send(struct fiber_task *, void *arg);
 extern int socket_recv(struct fiber_task *, void *arg);
-extern int socket_shutdown(struct fiber_task *, void *arg);
+extern int socket_shutdown_read(struct fiber_task *, void *arg);
+extern int socket_shutdown_write(struct fiber_task *, void *arg);
 
 /* facilitations to write fiber-based sockets */
-#define FIBER_SOCKET_ACCEPT(_ftask, _req)	FIBER_SUBCO(_ftask, socket_accept, _req)
-#define FIBER_SOCKET_CONNECT(_ftask, _req)	FIBER_SUBCO(_ftask, socket_connect, _req)
-#define FIBER_SOCKET_SEND(_ftask, _req)		FIBER_SUBCO(_ftask, socket_send, _req)
-#define FIBER_SOCKET_RECV(_ftask, _req)		FIBER_SUBCO(_ftask, socket_recv, _req)
-#define FIBER_SOCKET_SHUTDOWN(_ftask, _req)	FIBER_SUBCO(_ftask, socket_shutdown, _req)
+#define FIBER_SOCKET_ACCEPT(_ftask, _req)		FIBER_SUBCO(_ftask, socket_accept, _req)
+#define FIBER_SOCKET_CONNECT(_ftask, _req)		FIBER_SUBCO(_ftask, socket_connect, _req)
+#define FIBER_SOCKET_SEND(_ftask, _req)			FIBER_SUBCO(_ftask, socket_send, _req)
+#define FIBER_SOCKET_RECV(_ftask, _req)			FIBER_SUBCO(_ftask, socket_recv, _req)
+#define FIBER_SOCKET_SHUTDOWN_READ(_ftask, _req)	FIBER_SUBCO(_ftask, socket_shutdown_read, _req)
+#define FIBER_SOCKET_SHUTDOWN_WRITE(_ftask, _req)	FIBER_SUBCO(_ftask, socket_shutdown_write, _req)
 
 #define FIBER_SOCKET_BEGIN(_ftask, _socket_type, _arg)			\
 	volatile int ret = (_ftask)->last_ret;				\
@@ -203,6 +202,7 @@ extern void socket_init_send_req(struct socket *, struct socket_req *, const str
 	const uint8_t *buf, unsigned int len, uint16_t wait_type, unsigned long timeout);
 extern void socket_init_recv_req(struct socket *, struct socket_req *, struct sockaddr_ex *src_addr,
 	uint8_t *buf, unsigned int len, uint16_t wait_type, unsigned long timeout);
-extern void socket_init_shutdown_req(struct socket *, struct socket_req *, int how, unsigned long timeout);
+extern void socket_init_shutdown_read_req(struct socket *, struct socket_req *, unsigned long timeout);
+extern void socket_init_shutdown_write_req(struct socket *, struct socket_req *, unsigned long timeout);
 
 #endif

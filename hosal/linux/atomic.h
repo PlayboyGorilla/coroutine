@@ -43,6 +43,11 @@ static inline atomic_t sys_atomic_sub_return(atomic_t *atomic, atomic_t val)
 	return __sync_sub_and_fetch(atomic, val);
 }
 
+static inline atomic_t sys_atomic_return_or(atomic_t *atomic, atomic_t val)
+{
+	return __sync_fetch_and_or(atomic, val);
+}
+
 static inline void sys_atomic_set(atomic_t *atomic, atomic_t val)
 {
 	__sync_lock_test_and_set(atomic, val);

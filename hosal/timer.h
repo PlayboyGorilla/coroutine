@@ -5,8 +5,6 @@
 #include "lib/types.h"
 #include "lib/errno.h"
 
-#include "timer_cbk.h"
-
 extern void subsys_timer_init(void);
 extern void subsys_timer_exit(void);
 
@@ -33,7 +31,8 @@ extern unsigned long sys_get_jiffies(void);
 extern void sys_get_timestamp(void *timestamp);
 #define SYS_JIFFY_T_IN_SEC	0
 #define SYS_JIFFY_T_IN_MS	1
-#define SYS_JIFFY_T_MAX		2
+#define SYS_JIFFY_T_IN_US	2
+#define SYS_JIFFY_T_MAX		3
 extern unsigned long sys_get_timestamp_specific(int type);
 extern uint64_t sys_time_elapsed(const void *timestamp1, const void *timestamp2);
 

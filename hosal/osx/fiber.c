@@ -93,17 +93,19 @@ int sys_fiber_send_cmd(struct sys_fiber_loop *fbl, uint8_t event_type,
 	memcpy(event.user_data, &user_data_be64, sizeof(user_data_be64));
 
 	ret = write(fbl->fifo_wr, &event, sizeof(event));
-	if (ret != sizeof(event))
+	if (ret != sizeof(event)) {
 		return ERR_IO;
+	}
 
 	return ERR_OK;
 }
 
 int sys_fiber_creator_init(struct sys_fiber_loop *fbl)
 {
-	fbl->fifo_wr = open(fbl->fifo_name, O_WRONLY);
-	if (fbl->fifo_wr < 0)
+	fbl->fifo_wr = open(fbl->fifo_name, O_NONBLOCK | O_WRONLY);
+	if (fbl->fifo_wr < 0) {
 		return ERR_IO;
+	}
 
 	return ERR_OK;
 }
@@ -177,160 +179,22 @@ void sys_fiber_wait4_event(struct sys_fiber_loop *fbl, struct fiber_loop *floop,
 	}
 }
 
-#define SYS_FIBER_FTASK_NONE		0
-#define SYS_FIBER_FTASK_ADDED		1
-#define SYS_FIBER_FTASK_DELETED		2
-#define SYS_FIBER_FTASK_MASK		0x00FF
-#define SYS_FIBER_FTASK_HAS_BUDDY	BIT(8)
-static inline unsigned int sys_fiber_find_ftask(struct fiber_task **array, unsigned int nr,
-	struct fiber_task *ftask, uint16_t *has_buddy)
-{
-	unsigned int i;
-	unsigned int ret = nr;
-
-	for (i = 0; i < nr; i++) {
-		if (array[i] == ftask) {
-			ret = i;
-		} else if (array[i]) {
-			*has_buddy = SYS_FIBER_FTASK_HAS_BUDDY;
-		}
-	}
-	return ret;
-}
-
-static inline uint16_t sys_fiber_add_ftask_kqueue(struct fiber_task **array, unsigned int nr,
-	struct fiber_task *ftask)
-{
-	unsigned int i;
-	unsigned int idx;
-	uint16_t action = SYS_FIBER_FTASK_NONE;
-	uint16_t has_buddy = 0;
-
-	idx = sys_fiber_find_ftask(array, nr, ftask, &has_buddy);
-	action |= has_buddy;
-	if (idx != nr) {
-		return action;
-	}
-
-	for (i = 0; i < nr; i++) {
-		if (array[i] == NULL) {
-			array[i] = ftask;
-			action |= SYS_FIBER_FTASK_ADDED;
-			return action;
-		}
-	}
-
-	assert(0);
-	return action;
-}
-
-static inline uint16_t sys_fiber_del_ftask_kqueue(struct fiber_task **array, unsigned int nr,
-	struct fiber_task *ftask)
-{
-	unsigned int idx;
-	uint16_t action = SYS_FIBER_FTASK_NONE;
-	uint16_t has_buddy = 0;
-
-	idx = sys_fiber_find_ftask(array, nr, ftask, &has_buddy);
-	action |= has_buddy;
-	if (idx == nr) {
-		return action;
-	}
-
-	array[idx] = NULL;
-	action |= SYS_FIBER_FTASK_DELETED;
-
-	return action;
-}
-
-static int sys_fiber_monitor(struct fiber_task *ftask,
-	struct sys_fiber_loop *fbl, struct socket *s, int is_set,
-	struct kqueue_event_info *info)
+int sys_fiber_adjust_monitor(struct sys_fiber_loop *fbl, struct socket *s, int is_add, int is_read)
 {
 	struct osx_socket *sock = (struct osx_socket *)s;
 	struct kevent event;
-	uint16_t action;
-	uint16_t has_buddy;
+	int16_t filter;
+	uint16_t flags;
 	int ret;
 
-	if (is_set) {
-		action = sys_fiber_add_ftask_kqueue(info->ftask, ARRAY_SIZE(info->ftask), ftask);
-		has_buddy = !!(action & ~SYS_FIBER_FTASK_MASK);
-		action = (action & SYS_FIBER_FTASK_MASK);
+	filter = (is_read ? EVFILT_READ : EVFILT_WRITE);
+	flags = (is_add ? (EV_ADD | EV_ENABLE) : EV_DELETE);
 
-		if (has_buddy) {
-			assert(info->on);
-			return ERR_OK;
-		} else if (action == SYS_FIBER_FTASK_NONE) {
-			return ERR_OK;
-		} else {
-			assert(!info->on);
-		}
-	} else {
-		action = sys_fiber_del_ftask_kqueue(info->ftask, ARRAY_SIZE(info->ftask), ftask);
-		has_buddy = !!(action & ~SYS_FIBER_FTASK_MASK);
-		action = (action & SYS_FIBER_FTASK_MASK);
-
-		if (has_buddy) {
-			assert(info->on);
-			return ERR_OK;
-		} else if (action == SYS_FIBER_FTASK_NONE) {
-			return ERR_OK;
-		} else {
-			assert(info->on);
-		}
-	}
-
-	if (action == SYS_FIBER_FTASK_ADDED) {
-		EV_SET(&event, sock->fd, info->filter, EV_ADD | EV_ENABLE, 0, 0, sock);
-	} else {
-		assert(action == SYS_FIBER_FTASK_DELETED);
-		EV_SET(&event, sock->fd, info->filter, EV_DELETE, 0, 0, sock);
-	}
+	EV_SET(&event, sock->fd, filter, flags, 0, 0, sock);
 
 	ret = kevent(fbl->kq_fd, &event, 1, NULL, 0, NULL);
 	if (likely(ret >= 0)) {
-		info->on = !info->on;
 		return ERR_OK;
 	}
-
-	if (action == SYS_FIBER_FTASK_ADDED) {
-		sys_fiber_del_ftask_kqueue(info->ftask, ARRAY_SIZE(info->ftask), ftask);
-	} else {
-		sys_fiber_add_ftask_kqueue(info->ftask, ARRAY_SIZE(info->ftask), ftask);
-	}
-
 	return ERR_IO;
-}
-
-int sys_fiber_read_monitor(struct fiber_task *ftask,
-	struct sys_fiber_loop *fbl, struct socket *s, int is_set)
-{
-	struct osx_socket *sock = (struct osx_socket *)s;
-
-	return sys_fiber_monitor(ftask, fbl, s, is_set, &sock->read_info);
-}
-
-int sys_fiber_write_monitor(struct fiber_task *ftask,
-	struct sys_fiber_loop *fbl, struct socket *s, int is_set)
-{
-	struct osx_socket *sock = (struct osx_socket *)s;
-
-	return sys_fiber_monitor(ftask, fbl, s, is_set, &sock->write_info);
-}
-
-void sys_fiber_read_ftask(struct socket *s, struct fiber_task *array[SYS_FIBER_FTASK_MAX])
-{
-	struct osx_socket *sock = (struct osx_socket *)s;
-
-	assert(s->cls->domain == SOCK_DOMAIN_SYS_INET);
-	memcpy(array, sock->read_info.ftask, sizeof(sock->read_info.ftask));
-}
-
-void sys_fiber_write_ftask(struct socket *s, struct fiber_task *array[SYS_FIBER_FTASK_MAX])
-{
-	struct osx_socket *sock = (struct osx_socket *)s;
-
-	assert(s->cls->domain == SOCK_DOMAIN_SYS_INET);
-	memcpy(array, sock->write_info.ftask, sizeof(sock->write_info.ftask));
 }

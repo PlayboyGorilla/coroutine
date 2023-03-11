@@ -17,15 +17,7 @@ extern void sys_fiber_wait4_event(struct sys_fiber_loop *fbl, struct fiber_loop 
 	void (*event_cbk)(struct fiber_loop *, struct fiber_event *));
 
 struct socket;
-struct fiber_task;
-extern int sys_fiber_read_monitor(struct fiber_task *ftask,
-	struct sys_fiber_loop *fbl, struct socket *s, int is_set);
-extern int sys_fiber_write_monitor(struct fiber_task *ftask,
-	struct sys_fiber_loop *fbl, struct socket *s, int is_set);
-
-#define SYS_FIBER_FTASK_MAX	2
-extern void sys_fiber_read_ftask(struct socket *s, struct fiber_task *array[SYS_FIBER_FTASK_MAX]);
-extern void sys_fiber_write_ftask(struct socket *s, struct fiber_task *array[SYS_FIBER_FTASK_MAX]);
+extern int sys_fiber_adjust_monitor(struct sys_fiber_loop *fbl, struct socket *s, int is_add, int is_read);
 
 struct sys_fiber_event {
         uint64_t	pointer;

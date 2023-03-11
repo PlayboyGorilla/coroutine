@@ -82,9 +82,11 @@ unsigned long sys_get_timestamp_specific(int type)
 	ticks = mach_absolute_time();
 
 	/* to ms */
-	ret = (ticks * time_base_info.numer) / (time_base_info.denom * 1000000);
-	if (type == SYS_JIFFY_T_IN_SEC) {
+	ret = (ticks * time_base_info.numer) / (time_base_info.denom * 1000);
+	if (type == SYS_JIFFY_T_IN_MS) {
 		ret = ret / 1000;
+	} else if (type == SYS_JIFFY_T_IN_SEC) {
+		ret = ret / 1000000;
 	}
 	return ret;
 }

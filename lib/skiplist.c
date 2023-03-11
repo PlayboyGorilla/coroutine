@@ -192,8 +192,9 @@ void skiplist_eradicate(struct skiplist *list, struct skiplist_node *snode)
 	}
 
 	if (m == head->level && m > 1) {
-		while (head->next[m] == head && m > 1)
+		while (head->next[m] == head && m > 1) {
 			m--;
+		}
 		head->level = m;
 	}
 }

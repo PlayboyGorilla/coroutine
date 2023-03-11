@@ -56,9 +56,9 @@ struct fiber_task;
 typedef unsigned int	fiber_task_id;
 typedef void	(*fiber_destructor)(struct fiber_task *);
 
-#include "fiber/socket.h"
+struct socket;
 
-#define FIBER_TASK_MAX_TIER	8
+#define FIBER_TASK_MAX_TIER	16
 struct fiber_task {
 	struct fiber_loop	*floop;
 	void			*labels[FIBER_TASK_MAX_TIER];
@@ -108,10 +108,13 @@ extern void fiber_cancel(struct fiber_loop *, fiber_task_id id);
 typedef void (*fiber_finish_cb)(void *msg_data, int result);
 extern int fiber_notify(struct fiber_loop *, fiber_task_id id, void *msg_data,
 	fiber_finish_cb finish_cb);
+extern int fiber_notify_wait(struct fiber_loop *, fiber_task_id id, void *msg_data,
+	fiber_finish_cb finish_cb, unsigned int max_count);
 extern void fiber_wait(struct fiber_task *);
 extern void fiber_schedule(struct fiber_task *ftask, int last_ret);
+extern void fiber_void_destructor(struct fiber_task *ftask);
 
-/* fiber primitive -- invoked by fiber taslkets */
+/* fiber primitive -- invoked by fiber tasklets */
 extern void fiber_timeout(struct fiber_timer *ftimer, void *data);
 #define FIBER_YIELD(_ftask, _sock, _reason, _timeout_ms)						\
 	do {												\
@@ -132,7 +135,7 @@ extern void fiber_timeout(struct fiber_timer *ftimer, void *data);
 			(_ftask)->yield_sock = NULL;							\
                         (_ftask)->last_ret = ERR_OK;							\
 		}											\
-	} while(0)
+	} while (0)
 
 #define FIBER_YIELD_ERR_RETURN(_ftask, _sock, _reason, _timeout_ms)					\
 	do {												\
@@ -156,7 +159,7 @@ extern void fiber_timeout(struct fiber_timer *ftimer, void *data);
 				return ret;								\
 			}										\
 		}											\
-	} while(0)
+	} while (0)
 
 #define FIBER_CONCAT2(s1, s2)	s1##s2
 #define FIBER_CONCAT(s1, s2)	FIBER_CONCAT2(s1, s2)
@@ -246,7 +249,11 @@ extern int fiber_get_user_event(struct fiber_task *, struct fiber_user_event **u
 #define FIBER_GET_USER_EVENT(_ftask, _uevent)								\
 	do {												\
 		FIBER_CONCAT(FIBER_LABEL, __LINE__):							\
-		ret = fiber_get_user_event(_ftask, &(_uevent));						\
+		if ((_ftask)->last_ret == ERR_OK) {							\
+			ret = fiber_get_user_event(_ftask, &(_uevent));					\
+		} else {										\
+			ret = (_ftask)->last_ret;							\
+		}											\
 		if (ret == ERR_INPROGRESS) {								\
 			(_ftask)->labels[(_ftask)->tier] = &&FIBER_CONCAT(FIBER_LABEL, __LINE__);	\
 			(_ftask)->yield_reason = FIBER_YIELD_R_WAIT4_UEVENT;				\

@@ -1,6 +1,8 @@
 #ifndef __LIB_ERRNO_H
 #define __LIB_ERRNO_H
 
+typedef int			err_t;
+
 #define ERR_OK 0
 /*all error codes are < 0*/
 /*memory & misc*/
@@ -29,6 +31,7 @@
 #define ERR_RESET		(-23)	/* something is reset */
 #define ERR_CONN		(-24)	/* connection */
 #define ERR_CLOSED		(-25)	/* resource closed already */
+#define ERR_DONE_ALREADY	(-26)	/* operation is done already */
 #define ERR_UNKNOWN		(-99)
 /*socket*/
 #define ERR_SOCKET_BEGIN (-100)

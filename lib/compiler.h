@@ -4,6 +4,8 @@
 #define likely(x)  (x)
 #define unlikely(x)  (x)
 
+#define __may_block__
+
 #define compile_time_assert(cond)	\
 	do {				\
 		switch(0) {		\

@@ -9,6 +9,10 @@
 #include <fcntl.h>
 #include <sys/syscall.h>
 #define gettid() syscall(SYS_gettid)
+#ifdef __ANDROID__
+#include <jni.h>
+extern JavaVM *android_jvm;
+#endif
 
 #include "lib/compiler.h"
 #include "lib/errno.h"
@@ -58,6 +62,12 @@ int sys_fiber_thread_init(struct sys_fiber_loop *fbl)
 		goto close_ep_out;
 	}
 
+#ifdef __ANDROID__
+	if ((*android_jvm)->AttachCurrentThread(android_jvm, &fbl->jni_env, NULL) != JNI_OK) {
+		goto close_ep_out;
+	}
+#endif
+
 	return ERR_OK;
 close_ep_out:
 	close(fbl->epoll_fd);
@@ -71,6 +81,10 @@ unlink_out:
 void sys_fiber_thread_exit(struct sys_fiber_loop *fbl)
 {
 	struct epoll_event event;
+
+#ifdef __ANDROID__
+	(*android_jvm)->DetachCurrentThread(android_jvm);
+#endif
 
 	event.events = 0;
 	event.data.ptr = fbl;
@@ -97,17 +111,19 @@ int sys_fiber_send_cmd(struct sys_fiber_loop *fbl, uint8_t event_type,
 	memcpy(sfevent.user_data, &user_data_be64, sizeof(user_data_be64));
 
 	ret = write(fbl->fifo_wr, &sfevent, sizeof(sfevent));
-	if (ret != sizeof(sfevent))
+	if (ret != sizeof(sfevent)) {
 		return ERR_IO;
+	}
 
 	return ERR_OK;
 }
 
 int sys_fiber_creator_init(struct sys_fiber_loop *fbl)
 {
-	fbl->fifo_wr = open(fbl->fifo_name, O_WRONLY);
-	if (fbl->fifo_wr < 0)
+	fbl->fifo_wr = open(fbl->fifo_name, O_NONBLOCK | O_WRONLY);
+	if (fbl->fifo_wr < 0) {
 		return ERR_IO;
+	}
 
 	return ERR_OK;
 }
@@ -177,116 +193,20 @@ void sys_fiber_wait4_event(struct sys_fiber_loop *fbl, struct fiber_loop *floop,
 	}
 }
 
-#define SYS_FIBER_FTASK_NONE		0
-#define SYS_FIBER_FTASK_ADDED		1
-#define SYS_FIBER_FTASK_DELETED		2
-#define SYS_FIBER_FTASK_MASK		0x00FF
-#define SYS_FIBER_FTASK_HAS_BUDDY	BIT(8)
-static inline unsigned int sys_fiber_find_ftask(struct fiber_task **array, unsigned int nr,
-	struct fiber_task *ftask, uint16_t *has_buddy)
+int sys_fiber_adjust_monitor(struct sys_fiber_loop *fbl, struct socket *s, int is_add, int is_read)
 {
-	unsigned int i;
-	unsigned int ret = nr;
-
-	for (i = 0; i < nr; i++) {
-		if (array[i] == ftask) {
-			ret = i;
-		} else if (array[i]) {
-			*has_buddy = SYS_FIBER_FTASK_HAS_BUDDY;
-		}
-	}
-	return ret;
-}
-
-static inline uint16_t sys_fiber_add_ftask_epoll(struct fiber_task **array, unsigned int nr,
-	struct fiber_task *ftask)
-{
-	unsigned int i;
-	unsigned int idx;
-	uint16_t action = SYS_FIBER_FTASK_NONE;
-	uint16_t has_buddy = 0;
-
-	idx = sys_fiber_find_ftask(array, nr, ftask, &has_buddy);
-	action |= has_buddy;
-	if (idx != nr) {
-		return action;
-	}
-
-	for (i = 0; i < nr; i++) {
-		if (array[i] == NULL) {
-			array[i] = ftask;
-			action |= SYS_FIBER_FTASK_ADDED;
-			return action;
-		}
-	}
-
-	assert(0);
-	return action;
-}
-
-static inline uint16_t sys_fiber_del_ftask_epoll(struct fiber_task **array, unsigned int nr,
-	struct fiber_task *ftask)
-{
-	unsigned int idx;
-	uint16_t action = SYS_FIBER_FTASK_NONE;
-	uint16_t has_buddy = 0;
-
-	idx = sys_fiber_find_ftask(array, nr, ftask, &has_buddy);
-	action |= has_buddy;
-	if (idx == nr) {
-		return action;
-	}
-
-	array[idx] = NULL;
-	action |= SYS_FIBER_FTASK_DELETED;
-
-	return action;
-}
-
-static int sys_fiber_monitor(struct fiber_task *ftask,
-	struct sys_fiber_loop *fbl, struct linux_socket *sock, int is_set,
-	struct epoll_fiber_info *info)
-{
+	struct linux_socket *sock = (struct linux_socket *)s;
 	uint32_t sock_old_events = sock->epoll_events;
 	uint32_t sock_new_events;
-	uint16_t action;
-	uint16_t has_buddy;
-	uint32_t event_mask = info->event_mask;
+	uint32_t event_mask;
 	struct epoll_event event;
 	int ret;
 
-	if (is_set) {
-		action = sys_fiber_add_ftask_epoll(info->ftask, ARRAY_SIZE(info->ftask), ftask);
-		has_buddy = !!(action & ~SYS_FIBER_FTASK_MASK);
-		action = (action & SYS_FIBER_FTASK_MASK);
+	event_mask = (is_read ? (EPOLLIN | EPOLLRDHUP) : EPOLLOUT);
 
-		if (has_buddy) {
-			assert(info->on);
-			return ERR_OK;
-		} else if (action == SYS_FIBER_FTASK_NONE) {
-			return ERR_OK;
-		} else {
-			assert(!info->on);
-		}
-	} else {
-		action = sys_fiber_del_ftask_epoll(info->ftask, ARRAY_SIZE(info->ftask), ftask);
-		has_buddy = !!(action & ~SYS_FIBER_FTASK_MASK);
-		action = (action & SYS_FIBER_FTASK_MASK);
-
-		if (has_buddy) {
-			assert(info->on);
-			return ERR_OK;
-		} else if (action == SYS_FIBER_FTASK_NONE) {
-			return ERR_OK;
-		} else {
-			assert(info->on);
-		}
-	}
-
-	if (action == SYS_FIBER_FTASK_ADDED) {
+	if (is_add) {
 		sock_new_events = ((sock_old_events & ~event_mask) | event_mask);
 	} else {
-		assert(action == SYS_FIBER_FTASK_DELETED);
 		sock_new_events = (sock_old_events & ~event_mask);
 	}
 
@@ -304,51 +224,9 @@ static int sys_fiber_monitor(struct fiber_task *ftask,
 	}
 
 	if (likely(ret == 0)) {
-		info->on = !info->on;
 		sock->epoll_events = sock_new_events;
 		return ERR_OK;
 	}
 
-	/*
-	 * something is wrong - revert what's been done in the sock epoll table
-	 */
-	if (action == SYS_FIBER_FTASK_ADDED) {
-		sys_fiber_del_ftask_epoll(info->ftask, ARRAY_SIZE(info->ftask), ftask);
-	} else if (action == SYS_FIBER_FTASK_DELETED) {
-		sys_fiber_add_ftask_epoll(info->ftask, ARRAY_SIZE(info->ftask), ftask);
-	}
-
 	return ERR_IO;
-}
-
-int sys_fiber_read_monitor(struct fiber_task *ftask,
-        struct sys_fiber_loop *fbl, struct socket *s, int is_set)
-{
-	struct linux_socket *sock = (struct linux_socket *)s;
-
-	return sys_fiber_monitor(ftask, fbl, sock, is_set, &sock->read_info);
-}
-
-int sys_fiber_write_monitor(struct fiber_task *ftask,
-	struct sys_fiber_loop *fbl, struct socket *s, int is_set)
-{
-	struct linux_socket *sock = (struct linux_socket *)s;
-
-	return sys_fiber_monitor(ftask, fbl, sock, is_set, &sock->write_info);
-}
-
-void sys_fiber_read_ftask(struct socket *s, struct fiber_task *array[SYS_FIBER_FTASK_MAX])
-{
-	struct linux_socket *sock = (struct linux_socket *)s;
-
-	assert(s->cls->domain == SOCK_DOMAIN_SYS_INET);
-	memcpy(array, sock->read_info.ftask, sizeof(sock->read_info.ftask));
-}
-
-void sys_fiber_write_ftask(struct socket *s, struct fiber_task *array[SYS_FIBER_FTASK_MAX])
-{
-	struct linux_socket *sock = (struct linux_socket *)s;
-
-	assert(s->cls->domain == SOCK_DOMAIN_SYS_INET);
-	memcpy(array, sock->write_info.ftask, sizeof(sock->write_info.ftask));
 }

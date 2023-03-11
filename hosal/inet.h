@@ -1,9 +1,9 @@
 #ifdef __linux__
-#include "hosal/linux/atomic.h"
+#include "hosal/linux/inet.h"
 #elif defined WIN32
-#include "hosal/win/atomic.h"
+#include "hosal/win/inet.h"
 #elif defined __APPLE__
-#include "hosal/osx/atomic.h"
+#include "hosal/osx/inet.h"
 #else
 #error "Non-supported OS model"
 #endif

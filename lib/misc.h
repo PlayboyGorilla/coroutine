@@ -24,14 +24,15 @@
 extern void rand_buf(uint8_t * buf, unsigned int size);
 
 /* number */
+#ifndef max
 #define max(a, b)	((a) > (b) ? (a) : (b))
+#endif
+
+#ifndef min
 #define min(a, b)	((a) < (b) ? (a) : (b))
+#endif
 
 #define BIT(x)	(1 << (x))
-
-/* debug */
-#define BUG_ON(cond) if(cond) printf("%s: line %d, BUG_ON hit\n", __FILE__, __LINE__)
-#define WARN_ON(cond, msg)	if(cond) fprintf(stderr, "WARNING: %s\n", msg)
 
 #define container_of(ptr, type, member) \
 	 ( (type*)( (char*)(ptr) - (uint_pointer)&(((type*)0)->member) ) )
