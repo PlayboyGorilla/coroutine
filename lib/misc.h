@@ -5,9 +5,9 @@
 #include "hosal/type.h"
 
 /*utils*/
-#define ARRAY_SIZE(x) ( sizeof(x)/sizeof(x[0]) )
+#define ARRAY_SIZE(_x) (sizeof(_x) / sizeof(_x[0]) )
 //#define ARRAY_IDX(e, a)  (((e) - (a))/(sizeof(a[0])))
-#define ARRAY_IDX(e, a) ((e)-(a))
+#define ARRAY_IDX(_e, _a) ((_e) - (_a))
 /*x:uint32*/
 #define ALIGN_UP(x, align)		(((x) + (align) - 1) / (align) * (align))
 #define ALIGN_UP_PADDING(x, align)	(ALIGN_UP(x, align) - (x))
@@ -20,9 +20,6 @@
 
 #define MAX_SINT_POSITIVE (((unsigned int)(-1)) >> 1)
 
-/* rand */
-extern void rand_buf(uint8_t * buf, unsigned int size);
-
 /* number */
 #ifndef max
 #define max(a, b)	((a) > (b) ? (a) : (b))
@@ -32,7 +29,7 @@ extern void rand_buf(uint8_t * buf, unsigned int size);
 #define min(a, b)	((a) < (b) ? (a) : (b))
 #endif
 
-#define BIT(x)	(1 << (x))
+#define BIT(_x)	(1 << (_x))
 
 #define container_of(ptr, type, member) \
 	 ( (type*)( (char*)(ptr) - (uint_pointer)&(((type*)0)->member) ) )

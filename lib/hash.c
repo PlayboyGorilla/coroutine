@@ -131,7 +131,6 @@ void hash_iterate(struct hash *htable, void (*callback)(void *obj, void *data),
 
 		list_for_head2tail_safe(head, node, tmp) {
 			obj = hash_node_to_obj(htable, node);
-
 			callback(obj, data);
 		}
 	}

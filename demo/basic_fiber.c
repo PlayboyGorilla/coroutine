@@ -157,11 +157,11 @@ static int test_fiber_uevent_func(struct fiber_task *ftask, void *arg)
 {
 	FIBER_BEGIN(ftask, struct test_fiber_uevent, local);
 
-	FIBER_GET_USER_EVENT(ftask, local->uevent);
+	FIBER_GET_USER_EVENT(ftask, local->uevent, FIBER_WAIT4_INFINITE);
 	printf("%s: event data=\"%s\"\n", __func__, (const char *)(local->uevent->msg_data));
 	fiber_return_user_event(local->uevent, ERR_OK);
 
-	FIBER_GET_USER_EVENT(ftask, local->uevent);
+	FIBER_GET_USER_EVENT(ftask, local->uevent, FIBER_WAIT4_INFINITE);
 	printf("%s-2: event data=\"%s\"\n", __func__, (const char *)(local->uevent->msg_data));
 	fiber_return_user_event(local->uevent, ERR_OK);
 
@@ -219,7 +219,7 @@ int main(void)
 	ret = sys_init(&iparam);
 	assert(ret == ERR_OK);
 
-	floop = fiber_loop_create();
+	floop = fiber_loop_create(0);
 	if (!floop) {
 		printf("fiber_loop_create failed\n");
 		return -1;

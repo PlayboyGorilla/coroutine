@@ -10,12 +10,13 @@ extern void subsys_timer_exit(void);
 
 /* misc */
 struct sys_time {
-	uint8_t		day;
+	uint8_t		mday;
 	uint8_t		month;
 	uint16_t	year;
 	uint8_t		hour;
 	uint8_t		min;
 	uint8_t		sec;
+	uint8_t		wday;
 	uint16_t	msec;
 	int8_t		utc_hour_offset;
 	int8_t		utc_min_offset;
@@ -35,16 +36,5 @@ extern void sys_get_timestamp(void *timestamp);
 #define SYS_JIFFY_T_MAX		3
 extern unsigned long sys_get_timestamp_specific(int type);
 extern uint64_t sys_time_elapsed(const void *timestamp1, const void *timestamp2);
-
-/* platform-dependent */
-#ifdef __linux__
-#include "hosal/linux/timer.h"
-#elif defined WIN32
-#include "hosal/win/timer.h"
-#elif defined __APPLE__
-#include "hosal/osx/timer.h"
-#else
-#error "Non-supported OS model"
-#endif
 
 #endif

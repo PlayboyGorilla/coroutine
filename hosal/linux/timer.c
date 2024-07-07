@@ -203,7 +203,8 @@ int sys_time_get(struct sys_time *out)
 		return ERR_UNKNOWN;
 	}
 
-	out->day = timenow.tm_mday;
+	out->mday = timenow.tm_mday;
+	out->wday = timenow.tm_wday;
 	out->month = timenow.tm_mon + 1;
 	out->year = timenow.tm_year + 1900;
 	out->hour = timenow.tm_hour;

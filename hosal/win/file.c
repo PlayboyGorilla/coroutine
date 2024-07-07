@@ -48,8 +48,9 @@ int sys_file_read(struct sys_file *sf, uint8_t *buf, int len, int flags)
 	int proced = 0;
 	int ret;
 
-	if (len <= 0)
+	if (len <= 0) {
 		return ERR_INVAL;
+	}
 
 	while(1) {
 		ret = _read(sf->fd, buf + proced, len - proced);
@@ -70,8 +71,9 @@ int sys_file_write(struct sys_file *sf, const uint8_t *buf, int len, int flags)
 	int proced = 0;
 	int ret;
 
-	if (len <= 0)
+	if (len <= 0) {
 		return ERR_INVAL;
+	}
 
 	while (1) {
 		ret = _write(sf->fd, buf + proced, len - proced);
@@ -92,8 +94,9 @@ int sys_file_exist(const char *name)
 	struct _stat file_info;
 
 	ret = _stat(name, &file_info);
-	if (ret < 0)
+	if (ret < 0) {
 		return 0;
+	}
 
 	return 1;
 }
@@ -104,8 +107,9 @@ unsigned int sys_file_size(const char *name)
 	struct _stat file_info;
 
 	ret = _stat(name, &file_info);
-	if (ret < 0)
+	if (ret < 0) {
 		return 0;
+	}
 
 	return (unsigned int)(file_info.st_size);
 }

@@ -50,7 +50,7 @@ static int port_scan_fiber(struct fiber_task *ftask, void *arg)
 
 		addrex_init(&ps->addr);
 		addrex_set_ip(&ps->addr, ps->ip, htons(ps->port_curr));
-		socket_init_connect_req(ps->s, &ps->req, &ps->addr, 0, PS_CONNECT_TIMEOUT);
+		socket_init_connect_req(ps->s, &ps->req, &ps->addr, PS_CONNECT_TIMEOUT);
 
 		FIBER_SOCKET_CONNECT(ftask, &ps->req);
 		if (ps->req.ret == ERR_OK) {
@@ -88,11 +88,11 @@ int main(int argc, char *argv[])
 	/* init */
 	iparam.keyfile = NULL;
 	iparam.certfile = NULL;
-	iparam.fifo_base = "/tmp/nonsense_fb";
+	iparam.fifo_base = "/tmp/port_scan_fb";
 	ret = sys_init(&iparam);
 	assert(ret == ERR_OK);
 
-	floop = fiber_loop_create();
+	floop = fiber_loop_create(0);
 	if (!floop) {
 		printf("fiber_loop_create failed\n");
 		return -1;

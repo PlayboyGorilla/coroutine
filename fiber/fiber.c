@@ -22,6 +22,8 @@
 #include "fiber/fiber.h"
 #include "fiber/socket.h"
 
+#define FIBER_LOOP_MAX_APP_DATA		4
+
 struct fiber_loop {
 	struct sys_thread	thread;
 	struct sys_lock		lock;
@@ -30,11 +32,13 @@ struct fiber_loop {
 	struct list_head	task_ready;
 	struct skiplist		timers;
 	struct hash		*task_table;
+	void			*priv_data;
 	atomic_t		task_id;
 	unsigned long		timer_origin;
 	unsigned int		task_nr;
 	int			exit_sched;
 	int			ret;
+	void			*app_data[FIBER_LOOP_MAX_APP_DATA];
 	struct sys_fiber_loop	plat_data;
 };
 
@@ -48,7 +52,7 @@ static void fiber_event_cancel(struct fiber_loop *floop,
  * task state changes - run in fiber_loop context
  */
 static void fiber_task_done(struct fiber_task *ftask, int ret);
-static void fiber_task_resume(struct fiber_task *ftask, int last_ret);
+static void fiber_task_resume(struct fiber_task *ftask);
 static void fiber_task_suspend(struct fiber_task *ftask);
 
 static int fiber_timer_cmp(const struct skiplist_node *snode1,
@@ -85,14 +89,20 @@ static int fiber_task_equal(const void *obj1, const void *obj2)
 }
 
 static void *fiber_loop_main(void *arg);
-struct fiber_loop *fiber_loop_create(void)
+struct fiber_loop *fiber_loop_create(unsigned int priv_len)
 {
 	struct fiber_loop *floop;
+	const unsigned int aligned_len = ALIGN_UP(sizeof(struct fiber_loop), sizeof(uint64_t));
 	int ret;
 
-	floop = malloc(sizeof(struct fiber_loop));
+	floop = malloc(aligned_len + priv_len);
 	if (!floop) {
 		return NULL;
+	}
+	if (priv_len) {
+		floop->priv_data = ((uint8_t *)floop) + aligned_len;
+	} else {
+		floop->priv_data = NULL;
 	}
 	floop->ret = ERR_OK + 1;
 
@@ -119,6 +129,7 @@ struct fiber_loop *fiber_loop_create(void)
 	skiplist_init(&floop->timers, fiber_timer_cmp);
 	init_list_head(&floop->task_suspend);
 	init_list_head(&floop->task_ready);
+	memset(floop->app_data, 0, sizeof(floop->app_data));
 
 	sys_thread_init(&floop->thread, fiber_loop_main, floop);
 	ret = sys_thread_create(&floop->thread);
@@ -172,6 +183,11 @@ void fiber_loop_destroy(struct fiber_loop *floop)
 	free(floop);
 }
 
+void *fiber_loop_priv(struct fiber_loop *floop)
+{
+	return floop->priv_data;
+}
+
 struct fiber_loop *fiber_loop_current(void)
 {
 	return (struct fiber_loop *)sys_get_tls();
@@ -180,6 +196,26 @@ struct fiber_loop *fiber_loop_current(void)
 struct sys_fiber_loop *fiber_loop_platform(struct fiber_loop *floop)
 {
 	return &floop->plat_data;
+}
+
+int fiber_loop_set_data(struct fiber_loop *floop, int idx, void *data)
+{
+	if (idx >= FIBER_LOOP_MAX_APP_DATA) {
+		return ERR_OVERFLOW;
+	}
+	if (floop->app_data[idx]) {
+		return ERR_BUSY;
+	}
+	floop->app_data[idx] = data;
+	return ERR_OK;
+}
+
+void *fiber_loop_get_data(struct fiber_loop *floop, int idx)
+{
+	if (idx >= FIBER_LOOP_MAX_APP_DATA) {
+		return NULL;
+	}
+	return floop->app_data[idx];
 }
 
 int fiber_init(struct fiber_task *ftask, fiber_callback task_cbk,
@@ -259,7 +295,6 @@ void *fiber_local(struct fiber_task *ftask)
 int fiber_submit(struct fiber_loop *floop, struct fiber_task *ftask, fiber_task_id *id)
 {
 	ftask->floop = floop;
-	ftask->state = FIBER_TASK_S_INIT;
 	ftask->last_ret = ERR_OK;
 	ftask->tier = 0;
 	ftask->id = (fiber_task_id)sys_atomic_inc_return(&floop->task_id);
@@ -479,15 +514,6 @@ unsigned long fiber_timer_tte(struct fiber_timer *ftimer)
 	}
 }
 
-/* in conjunction with FIBER_MSLEEP */
-static void fiber_msleep_timeout(struct fiber_timer *ftimer, void *data)
-{
-	struct fiber_task *ftask;
-
-	ftask = container_of(ftimer, struct fiber_task, timer);
-	fiber_schedule(ftask, ERR_TIMEOUT);
-}
-
 int fiber_msleep(struct fiber_task *ftask, unsigned long ms)
 {
 	struct fiber_timer *ftimer = &ftask->timer;
@@ -500,7 +526,7 @@ int fiber_msleep(struct fiber_task *ftask, unsigned long ms)
 		return ERR_INVAL;
 	}
 
-	fiber_timer_mod(ftimer, ms, fiber_msleep_timeout, NULL);
+	fiber_timer_mod(ftimer, ms, fiber_timeout, NULL);
 	return ERR_INPROGRESS;
 }
 
@@ -593,6 +619,10 @@ static void fiber_task_done(struct fiber_task *ftask, int ret)
 		sys_cond_signal(&ftask->cond);
 		sys_unlocking(&ftask->lock);
 	} else {
+		/*
+		 * Be careful, destructor may free @ftask
+		 * After destructor, @ftask MUST not be touched
+		 */
 		ftask->state = FIBER_TASK_S_DONE;
 		ftask->destructor(ftask);
 	}
@@ -676,12 +706,12 @@ static int fiber_adjust_monitor(struct fiber_task *ftask, struct socket *s,
 	struct fiber_task **ftask_tbl;
 	uint16_t action;
 	uint16_t has_buddy;
-	uint8_t *is_mon_on;
+	unsigned int mon_mask;
 	int ret;
 
 	fbl = &ftask->floop->plat_data;
 	ftask_tbl = (is_read ? s->read_ftask : s->write_ftask);
-	is_mon_on = (is_read ? &s->read_mon_on : &s->write_mon_on);
+	mon_mask = (is_read ? SOCKET_S_READ_MON_ON : SOCKET_S_WRITE_MON_ON);
 
 	if (is_set) {
 		action = fiber_add_ftask_action(ftask_tbl, SOCK_PENDING_FTASK_MAX, ftask);
@@ -689,12 +719,12 @@ static int fiber_adjust_monitor(struct fiber_task *ftask, struct socket *s,
 		action = (action & SYS_FIBER_FTASK_ACTION_MASK);
 
 		if (has_buddy) {
-			assert(*is_mon_on);
+			assert(s->state & mon_mask);
 			return ERR_OK;
 		} else if (action == SYS_FIBER_FTASK_NONE) {
 			return ERR_OK;
 		} else {
-			assert(!(*is_mon_on));
+			assert(!(s->state & mon_mask));
 		}
 	} else {
 		action = fiber_del_ftask_action(ftask_tbl, SOCK_PENDING_FTASK_MAX, ftask);
@@ -702,23 +732,23 @@ static int fiber_adjust_monitor(struct fiber_task *ftask, struct socket *s,
 		action = (action & SYS_FIBER_FTASK_ACTION_MASK);
 
 		if (has_buddy) {
-			assert(*is_mon_on);
+			assert(s->state & mon_mask);
 			return ERR_OK;
 		} else if (action == SYS_FIBER_FTASK_NONE) {
 			return ERR_OK;
 		} else {
-			assert(*is_mon_on);
+			assert(s->state & mon_mask);
 		}
 	}
 
 	ret = sys_fiber_adjust_monitor(fbl, s, action == SYS_FIBER_FTASK_ADD, is_read);
 	if (likely(ret == ERR_OK)) {
-		*is_mon_on = !(*is_mon_on);
+		s->state ^= mon_mask;
 		return ERR_OK;
 	}
 
 	/*
-	 * something is wrong - revert what's been done in the sock kqueue table
+	 * something is wrong - revert what's been done in the sock kqueue/epoll table
 	 */
 	if (action == SYS_FIBER_FTASK_ADD) {
 		fiber_del_ftask_action(ftask_tbl, SOCK_PENDING_FTASK_MAX, ftask);
@@ -768,13 +798,12 @@ static void fiber_task_suspend(struct fiber_task *ftask)
 	ftask->last_yield_sock = ftask->yield_sock;
 }
 
-static void fiber_task_resume(struct fiber_task *ftask, int last_ret)
+static void fiber_task_resume(struct fiber_task *ftask)
 {
 	int ret;
 
 	ftask->state = FIBER_TASK_S_RUNNING;
 	ftask->tier = 0;
-	ftask->last_ret = last_ret;
 	ret = ftask->task_cbk(ftask, NULL);
 	if (ret != ERR_INPROGRESS) {
 		fiber_task_done(ftask, ret);
@@ -834,36 +863,26 @@ static void fiber_event_read(struct fiber_loop *floop,
 	const struct fiber_event *fevent)
 {
 	struct socket *s = (struct socket *)(fevent->data);
-	unsigned int nr = 0;
 	unsigned int i;
 
 	for (i = 0; i < SOCK_PENDING_FTASK_MAX; i++) {
 		if (s->read_ftask[i]) {
-			nr++;
 			fiber_schedule(s->read_ftask[i], ERR_OK);
 		}
 	}
-
-	/* fiber tasks waiting on READ event must be present */
-	assert(nr > 0);
 }
 
 static void fiber_event_write(struct fiber_loop *floop,
 	const struct fiber_event *fevent)
 {
 	struct socket *s = (struct socket *)(fevent->data);
-	unsigned int nr = 0;
 	unsigned int i;
 
 	for (i = 0; i < SOCK_PENDING_FTASK_MAX; i++) {
 		if (s->write_ftask[i]) {
-			nr++;
 			fiber_schedule(s->write_ftask[i], ERR_OK);
 		}
 	}
-
-	/* fiber tasks waiting on WRITE event must be present */
-	assert(nr > 0);
 }
 
 static void fiber_event_error(struct fiber_loop *floop,
@@ -999,7 +1018,7 @@ void fiber_may_resume_tasks(struct fiber_loop *floop)
 
 		list_for_head2tail_safe(&ftask_head, node, temp) {
 			ftask = container_of(node, struct fiber_task, node2);
-			fiber_task_resume(ftask, ftask->last_ret);
+			fiber_task_resume(ftask);
 		}
 		init_list_head(&ftask_head);
 	}

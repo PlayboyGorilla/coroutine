@@ -10,24 +10,6 @@
 #include "fiber/fiber.h"
 #include "log/stats.h"
 
-static DEFINE_LIST_HEAD(sock_class_list);
-
-void register_socket_class(struct socket_class *sockcls)
-{
-	/*
-	 * FIXME: The list should be protected by a lock
-	 * since all potential calls will be in initialization,
-	 * no synchronization issues
-	 */
-	list_add_tail(&sock_class_list, &sockcls->node);
-}
-
-void unregister_socket_class(struct socket_class *sockcls)
-{
-	/* same as above */
-	list_del_node(&sock_class_list, &sockcls->node);
-}
-
 /* unified interfaces */
 static inline void socket_init_io(struct socket_io *sio)
 {
@@ -43,6 +25,18 @@ static inline void socket_init_pending_ftask(struct fiber_task *ftasks[SOCK_PEND
 	}
 }
 
+void socket_init(struct socket *s)
+{
+	socket_init_io(&s->io[SOCK_IO_OP_TX]);
+	socket_init_io(&s->io[SOCK_IO_OP_RX]);
+	socket_init_io(&s->io[SOCK_IO_OP_SHUTDOWN_READ]);
+	socket_init_io(&s->io[SOCK_IO_OP_SHUTDOWN_WRITE]);
+
+	socket_init_pending_ftask(s->read_ftask);
+	socket_init_pending_ftask(s->write_ftask);
+	s->state = 0;
+}
+
 struct socket *socket_create_from_class(struct socket_class *sockcls, unsigned int priv_data, void *init_data)
 {
 	struct socket *s;
@@ -50,37 +44,12 @@ struct socket *socket_create_from_class(struct socket_class *sockcls, unsigned i
 	s = sockcls->socket(priv_data, init_data);
 	if (s) {
 		s->cls = sockcls;
-		socket_init_io(&s->io[SOCK_IO_OP_TX]);
-		socket_init_io(&s->io[SOCK_IO_OP_RX]);
-		socket_init_io(&s->io[SOCK_IO_OP_SHUTDOWN_READ]);
-		socket_init_io(&s->io[SOCK_IO_OP_SHUTDOWN_WRITE]);
-
-		socket_init_pending_ftask(s->read_ftask);
-		socket_init_pending_ftask(s->write_ftask);
-		s->read_mon_on = 0;
-		s->write_mon_on = 0;
+		socket_init(s);
 
 		STATS_INC(STATS_SOCKET);
 	}
 
 	return s;
-}
-
-struct socket *socket_create(int domain, int type, int protocol, unsigned int priv_data, void *init_data)
-{
-	struct list_node *node;
-	struct socket_class *sockcls;
-
-	list_for_head2tail(&sock_class_list, node) {
-		sockcls = container_of(node, struct socket_class, node);
-		if (domain == sockcls->domain
-				&& type == sockcls->type
-				&& protocol == sockcls->protocol) {
-			return socket_create_from_class(sockcls, priv_data, init_data);
-		}
-	}
-
-	return NULL;
 }
 
 static void socket_unwrap_clear_ftask(struct socket *s,
@@ -201,6 +170,9 @@ int socket_connect(struct fiber_task *ftask, void *arg)
 	}
 
 	FIBER_SOCKET_SUBCO_1(ftask, sock->cls->connect, arg, &sock->io[SOCK_IO_OP_TX]);
+	if (ret == ERR_OK) {
+		sock->state |= SOCKET_S_CONNECTED;
+	}
 	FIBER_SOCKET_END(ftask, ret);
 }
 
@@ -216,6 +188,9 @@ int socket_shutdown_read(struct fiber_task *ftask, void *arg)
 	}
 
 	FIBER_SOCKET_SUBCO_1(ftask, sock->cls->shutdown_read, arg, &sock->io[SOCK_IO_OP_SHUTDOWN_READ]);
+	if (ret == ERR_OK) {
+		sock->state |= SOCKET_S_READ_SHUTDOWN;
+	}
 	FIBER_SOCKET_END(ftask, ret);
 }
 
@@ -231,6 +206,9 @@ int socket_shutdown_write(struct fiber_task *ftask, void *arg)
 	}
 
 	FIBER_SOCKET_SUBCO_1(ftask, sock->cls->shutdown_write, arg, &sock->io[SOCK_IO_OP_SHUTDOWN_WRITE]);
+	if (ret == ERR_OK) {
+		sock->state |= SOCKET_S_WRITE_SHUTDOWN;
+	}
 	FIBER_SOCKET_END(ftask, ret);
 }
 
@@ -272,6 +250,9 @@ int socket_send(struct fiber_task *ftask, void *arg)
 {
 	FIBER_SOCKET_BEGIN(ftask, struct socket, arg);
 
+	if (sock->state & SOCKET_S_WRITE_SHUTDOWN) {
+		return ERR_STATE;
+	}
 	if (sock->cls->type != SOCK_TYPE_STREAM &&
 			req->wait_type == SOCKIO_WAIT_ALL) {
 		req->wait_type = SOCKIO_WAIT_NORMAL;
@@ -323,6 +304,9 @@ int socket_recv(struct fiber_task *ftask, void *arg)
 {
 	FIBER_SOCKET_BEGIN(ftask, struct socket, arg);
 
+	if (sock->state & SOCKET_S_READ_SHUTDOWN) {
+		return ERR_STATE;
+	}
 	if (sock->cls->type != SOCK_TYPE_STREAM &&
 			req->wait_type == SOCKIO_WAIT_ALL) {
 		req->wait_type = SOCKIO_WAIT_NORMAL;
@@ -338,7 +322,7 @@ int socket_recv(struct fiber_task *ftask, void *arg)
 
 /* request interfaces */
 void socket_init_connect_req(struct socket *s, struct socket_req *req,
-	const struct sockaddr_ex *addr, int is_ssl, unsigned long timeout)
+	const struct sockaddr_ex *addr, unsigned long timeout)
 {
 	req->s = s;
 	req->ret = 0;
@@ -347,7 +331,6 @@ void socket_init_connect_req(struct socket *s, struct socket_req *req,
 	req->io_type = SOCKIO_T_CONNECT;
 	req->wait_type = SOCKIO_WAIT_NORMAL;
 	req->param.conn.addr = addr;
-	req->param.conn.flags = (is_ssl ? SOCK_REQP_F_SSL : 0);
 	memset(&req->u, 0, sizeof(req->u));
 }
 
@@ -366,7 +349,7 @@ void socket_init_accept_req(struct socket *s, struct socket_req *req,
 }
 
 void socket_init_send_req(struct socket *s, struct socket_req *req, const struct sockaddr_ex *dest_addr,
-	const uint8_t *buf, unsigned int len, uint16_t wait_type, unsigned long timeout)
+	const void *buf, size_t len, uint16_t wait_type, unsigned long timeout)
 {
 	req->s = s;
 	req->ret = 0;
@@ -381,7 +364,7 @@ void socket_init_send_req(struct socket *s, struct socket_req *req, const struct
 }
 
 void socket_init_recv_req(struct socket *s, struct socket_req *req, struct sockaddr_ex *src_addr,
-	uint8_t *buf, unsigned int len, uint16_t wait_type, unsigned long timeout)
+	void *buf, size_t len, uint16_t wait_type, unsigned long timeout)
 {
 	req->s = s;
 	req->ret = 0;

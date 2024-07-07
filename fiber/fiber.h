@@ -14,10 +14,13 @@
 #include "lib/compiler.h"
 
 struct fiber_loop;
-extern struct fiber_loop *fiber_loop_create(void);
+extern struct fiber_loop *fiber_loop_create(unsigned int priv_len);
 extern void fiber_loop_destroy(struct fiber_loop *floop);
+extern void *fiber_loop_priv(struct fiber_loop *floop);
 extern struct fiber_loop *fiber_loop_current(void);
 extern struct sys_fiber_loop *fiber_loop_platform(struct fiber_loop *floop);
+extern int fiber_loop_set_data(struct fiber_loop *floop, int idx, void *data);
+extern void *fiber_loop_get_data(struct fiber_loop *floop, int idx);
 
 static inline int fiber_loop_is_current(struct fiber_loop *floop)
 {
@@ -58,17 +61,17 @@ typedef void	(*fiber_destructor)(struct fiber_task *);
 
 struct socket;
 
-#define FIBER_TASK_MAX_TIER	16
+#define FIBER_TASK_MAX_TIER	24
 struct fiber_task {
 	struct fiber_loop	*floop;
 	void			*labels[FIBER_TASK_MAX_TIER];
 	uint16_t		tier;	/* current tier */
 #define FIBER_TASK_S_INIT	0
-#define FIBER_TASK_S_SUSPEND	1	/* suspended */
-#define FIBER_TASK_S_SCHED	2	/* ready to be scheduled */
-#define FIBER_TASK_S_RUNNING	3
-#define FIBER_TASK_S_DONE	4
-	unsigned int		state;
+#define FIBER_TASK_S_DONE	1
+#define FIBER_TASK_S_SUSPEND	2	/* suspended */
+#define FIBER_TASK_S_SCHED	3	/* ready to be scheduled */
+#define FIBER_TASK_S_RUNNING	4
+	uint16_t		state;
 #define FIBER_YIELD_R_NONE		0
 #define FIBER_YIELD_R_MSLEEP		1
 #define FIBER_YIELD_R_WAIT4_READ	2
@@ -221,7 +224,7 @@ extern int fiber_msleep(struct fiber_task *, unsigned long ms);
 			return ret;									\
 		} else if (ret != ERR_TIMEOUT) {							\
 			assert(ret != ERR_OK);								\
-			return ret;									\
+			fiber_timer_del(&(_ftask)->timer);						\
 		}											\
 	} while (0)
 
@@ -246,7 +249,7 @@ struct fiber_user_event {
 
 extern void fiber_return_user_event(struct fiber_user_event *uevent, int result);
 extern int fiber_get_user_event(struct fiber_task *, struct fiber_user_event **uevent);
-#define FIBER_GET_USER_EVENT(_ftask, _uevent)								\
+#define FIBER_GET_USER_EVENT(_ftask, _uevent, _timeout_ms)						\
 	do {												\
 		FIBER_CONCAT(FIBER_LABEL, __LINE__):							\
 		if ((_ftask)->last_ret == ERR_OK) {							\
@@ -258,7 +261,13 @@ extern int fiber_get_user_event(struct fiber_task *, struct fiber_user_event **u
 			(_ftask)->labels[(_ftask)->tier] = &&FIBER_CONCAT(FIBER_LABEL, __LINE__);	\
 			(_ftask)->yield_reason = FIBER_YIELD_R_WAIT4_UEVENT;				\
 			(_ftask)->yield_sock = NULL;							\
+			if ((_timeout_ms) <= FIBER_MSLEEP_MAX) {					\
+				fiber_timer_mod(&(_ftask)->timer, (_timeout_ms),			\
+					fiber_timeout, NULL);						\
+			}										\
 			return ret;									\
+		} else {										\
+			fiber_timer_del(&(_ftask)->timer);						\
 		}											\
 	} while (0)
 

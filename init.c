@@ -21,7 +21,7 @@ int sys_init(const struct sys_init_param *param)
 	subsys_timer_init();
 	subsys_fiber_init(param->fifo_base);
 
-	ret = subsys_sys_socket_init(param->keyfile, param->certfile);
+	ret = subsys_sys_socket_init();
 	if (ret != ERR_OK) {
 		return ret;
 	}

@@ -765,18 +765,10 @@ int subsys_sys_socket_init(const char *keyfile, const char *certfile)
 
 	subsys_load_mswsock();
 
-	register_socket_class(&sys_tcp_socket);
-	register_socket_class(&sys_udp_socket);
-	register_socket_class(&sys_icmp_socket);
-
 	return ERR_OK;
 }
 
 void subsys_sys_socket_exit(void)
 {
-	unregister_socket_class(&sys_icmp_socket);
-	unregister_socket_class(&sys_udp_socket);
-	unregister_socket_class(&sys_tcp_socket);
-
 	WSACleanup();
 }

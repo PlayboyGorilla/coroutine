@@ -27,13 +27,15 @@ int sys_time_get(struct sys_time *out)
 
 	GetLocalTime(&time);
 
-	out->day = time.wDay;
+	out->mday = time.wDay;
+	out->wday = time.wDayOfWeek;
 	out->month = time.wMonth;
 	out->year = time.wYear;
 	out->hour = time.wHour;
 	out->min = time.wMinute;
 	out->sec = time.wSecond;
 	out->msec = time.wMilliseconds;
+	memset(out->time_zone, 0, sizeof(out->time_zone));
 
 	return ERR_OK;
 }

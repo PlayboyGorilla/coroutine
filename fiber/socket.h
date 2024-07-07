@@ -24,8 +24,12 @@ struct socket {
 	struct socket_class	*cls;
 	struct fiber_task	*read_ftask[SOCK_PENDING_FTASK_MAX];
 	struct fiber_task	*write_ftask[SOCK_PENDING_FTASK_MAX];
-	uint8_t			read_mon_on;
-	uint8_t			write_mon_on;
+#define SOCKET_S_READ_MON_ON		BIT(0)
+#define SOCKET_S_WRITE_MON_ON		BIT(1)
+#define SOCKET_S_CONNECTED		BIT(2)
+#define SOCKET_S_READ_SHUTDOWN		BIT(3)
+#define SOCKET_S_WRITE_SHUTDOWN		BIT(4)
+	unsigned int		state;
 #define SOCK_IO_OP_TX			0
 #define SOCK_IO_OP_RX			1
 #define SOCK_IO_OP_SHUTDOWN_READ	2
@@ -47,6 +51,7 @@ static inline int socket_is_in_progress(const struct socket *sock, unsigned int 
 #define SOCK_DOMAIN_FFIP_INET6	4
 #define SOCK_DOMAIN_TUNNEL	5
 #define SOCK_DOMAIN_VPROXY	6
+#define SOCK_DOMAIN_INBOUND	7
 
 #define SOCK_TYPE_STREAM	1 
 #define SOCK_TYPE_DGRAM		2
@@ -77,19 +82,16 @@ struct socket_class {
 
 	fiber_callback	accept;
 	fiber_callback	connect;
-	fiber_callback	shutdown_read;
-	fiber_callback	shutdown_write;
 	fiber_callback	send;
 	fiber_callback	recv;
+	fiber_callback	shutdown_read;
+	fiber_callback	shutdown_write;
 
 	int (*setsockopt)(struct socket *, int option, int val);
 
 	/* internal -- never touch directly */
 	struct list_node	node;
 };
-
-extern void register_socket_class(struct socket_class *);
-extern void unregister_socket_class(struct socket_class *);
 
 /* unified interfaces */
 union socket_req_param {
@@ -143,9 +145,11 @@ struct socket_req {
 #define SOCK_REQ_PRIV_MAX	(sizeof(unsigned long) * 16)
 #define socket_req_priv(type, req)	((type *)((req)->extra))
 
-extern struct socket *socket_create(int domain, int type, int protocol, unsigned int priv_data, void *init_data);
 extern struct socket *socket_create_from_class(struct socket_class *, unsigned int priv_data, void *init_data);
 extern int socket_close(struct socket *);
+
+/* called on accepted sockets */
+extern void socket_init(struct socket *);
 
 extern int socket_bind(struct socket *, const struct sockaddr_ex *);
 extern int socket_listen(struct socket *);
@@ -186,7 +190,7 @@ extern int socket_shutdown_write(struct fiber_task *, void *arg);
 	if ((_ftask)->labels[(_ftask)->tier] != NULL) {			\
 		__attribute__((unused)) void *__unused_goto_p = &&unused_label;			\
 		void *__goto_p = (_ftask)->labels[(_ftask)->tier];	\
-unused_label:		\
+unused_label:								\
 		(ftask)->labels[(_ftask)->tier] = NULL;			\
 		goto *__goto_p;						\
 	}
@@ -195,13 +199,13 @@ unused_label:		\
 
 /* request interfaces */
 extern void socket_init_connect_req(struct socket *,struct socket_req *,
-	const struct sockaddr_ex *, int is_ssl, unsigned long timeout);
+	const struct sockaddr_ex *, unsigned long timeout);
 extern void socket_init_accept_req(struct socket *, struct socket_req *,
 	struct sockaddr_ex *, unsigned long timeout);
 extern void socket_init_send_req(struct socket *, struct socket_req *, const struct sockaddr_ex *dest_addr,
-	const uint8_t *buf, unsigned int len, uint16_t wait_type, unsigned long timeout);
+	const void *buf, size_t len, uint16_t wait_type, unsigned long timeout);
 extern void socket_init_recv_req(struct socket *, struct socket_req *, struct sockaddr_ex *src_addr,
-	uint8_t *buf, unsigned int len, uint16_t wait_type, unsigned long timeout);
+	void *buf, size_t len, uint16_t wait_type, unsigned long timeout);
 extern void socket_init_shutdown_read_req(struct socket *, struct socket_req *, unsigned long timeout);
 extern void socket_init_shutdown_write_req(struct socket *, struct socket_req *, unsigned long timeout);
 

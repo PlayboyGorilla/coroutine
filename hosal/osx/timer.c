@@ -37,20 +37,23 @@ int sys_time_get(struct sys_time *out)
 	gettimeofday(&tv, NULL);
 
 	ret = localtime_r(&tv.tv_sec, &timenow);
-	if (unlikely(!ret))
+	if (unlikely(!ret)) {
 		return ERR_UNKNOWN;
+	}
 
-	out->day = timenow.tm_mday;
+	out->mday = timenow.tm_mday;
+	out->wday = timenow.tm_wday;
 	out->month = timenow.tm_mon + 1;
 	out->year = timenow.tm_year + 1900;
 	out->hour = timenow.tm_hour;
 	out->min = timenow.tm_min;
 	out->sec = timenow.tm_sec;
 	out->msec = tv.tv_usec / 1000;
-	if (timenow.tm_zone)
+	if (timenow.tm_zone) {
 		strncpy(out->time_zone, timenow.tm_zone, sizeof(out->time_zone));
-	else
+	} else {
 		memset(out->time_zone, 0, sizeof(out->time_zone));
+	}
 	out->utc_hour_offset = timenow.tm_gmtoff / 3600;
 	out->utc_min_offset = (timenow.tm_gmtoff % 3600) / 60;
 

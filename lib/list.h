@@ -53,11 +53,13 @@ static inline struct list_node *list_last_node(struct list_head *head)
 
 static inline struct list_node *list_next_node(struct list_head *head, struct list_node *node)
 {
+	(void)head;
 	return node->next;
 }
 
 static inline struct list_node *list_prev_node(struct list_head *head, struct list_node *node)
 {
+	(void)head;
 	return node->prev;
 }
 
@@ -119,12 +121,14 @@ static inline const struct list_node *list_last_node_const(const struct list_hea
 static inline const struct list_node *list_next_node_const(const struct list_head *head,
 		const struct list_node *node)
 {
+	(void)head;
 	return node->next;
 }
 
 static inline const struct list_node *list_prev_node_const(const struct list_head *head,
 		const struct list_node *node)
 {
+	(void)head;
 	return node->prev;
 }
 
